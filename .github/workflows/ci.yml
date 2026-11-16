@@ -13,7 +13,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]  # the primary dev host is Windows
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (locked)
         run: uv sync --locked --extra dev --extra hyphens
@@ -25,7 +25,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Ruff
         run: uvx ruff check llm_localizator
@@ -33,7 +33,7 @@ jobs:
   self-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (locked)
         run: uv sync --locked
@@ -44,7 +44,7 @@ jobs:
   self-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (locked)
         run: uv sync --locked
