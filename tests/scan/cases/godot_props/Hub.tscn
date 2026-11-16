@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=2]
+
+[node name="Brick" parent="YSort" index="6" instance=ExtResource( 3 )]
+position = Vector2( 272, 461.1 )
+LEVEL = "Brick"
+DISPLAY_NAME = "brick & mortar"
+STAR_REQUIREMENT = 1
+
+[node name="Core" parent="YSort"]
+WORLD = "D"
+level_title = "The Core"
+DISPLAY_NAME = "fork in the road"
+
+[node name="Panel" parent="."]
+editor_description = "This container is needed because the panel style breaks otherwise."

@@ -1,0 +1,34 @@
+# llm_localizator
+
+> Localisation engine for app message catalogues: finds hardcoded UI strings, translates with
+> local (Ollama) or cloud LLMs (Claude Haiku, DeepSeek, OpenAI), validates placeholders and
+> plurals, and gives human reviewers a local web UI. CLI `llm-localizator`, PyPI `llm_localizator`.
+> Not related to the `llm-localizator` package on PyPI.
+
+## Start here
+
+- README: https://github.com/wwylon/llm_localizator/blob/main/README.md
+- Agents bootstrap: https://github.com/wwylon/llm_localizator/blob/main/AGENTS.md
+- Getting started: https://github.com/wwylon/llm_localizator/blob/main/docs/getting-started.md
+- CLI reference: https://github.com/wwylon/llm_localizator/blob/main/docs/cli.md
+- Configuration (`.llm-localize.toml`): https://github.com/wwylon/llm_localizator/blob/main/docs/configuration.md
+- Agent workflow: https://github.com/wwylon/llm_localizator/blob/main/docs/agents.md
+- Hardcoded-string scanner: https://github.com/wwylon/llm_localizator/blob/main/docs/scanners.md
+
+## Hard rules for agents
+
+- Do not hand-write catalogue translations; run `llm-localizator translate`, or stamp edits with
+  `llm-localizator adopt`.
+- `agent-hardcoded` reports hardcoded strings; it never rewrites source. Wire `t()` yourself.
+- `validate`, `scan`, `status`, `check-keys`, `agent-backlog` and `agent-hardcoded` need no
+  model and no network: safe in CI.
+- Cloud engines run only with `[privacy] allow_cloud = true` and a monthly budget.
+- Do not invent commands or config keys; `llm-localizator --help` and docs/cli.md are the source.
+
+## Optional deeper
+
+- Catalogue formats: https://github.com/wwylon/llm_localizator/blob/main/docs/catalog-adapters.md
+- Validation rules: https://github.com/wwylon/llm_localizator/blob/main/docs/validation-rules.md
+- Providers and engines: https://github.com/wwylon/llm_localizator/blob/main/docs/providers.md
+- Web UI: https://github.com/wwylon/llm_localizator/blob/main/docs/web.md
+- Design decisions: https://github.com/wwylon/llm_localizator/tree/main/docs/decisions

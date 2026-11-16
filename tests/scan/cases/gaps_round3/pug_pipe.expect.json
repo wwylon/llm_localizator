@@ -1,0 +1,4 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Nothing is playing right now", "min_conf": "medium"},
+              {"text": "Skip this track", "min_conf": "medium"}],
+ "must_not": ["| Nothing is playing right now", "| Skip this track", "NoActive"]}

@@ -1,0 +1,7 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "No orders yet", "min_conf": "medium"}
+ ],
+ "must_not": ["Ignored code value", "Hidden code text", "var count = Model.Items.Count;"]
+}

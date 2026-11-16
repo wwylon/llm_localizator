@@ -1,0 +1,10 @@
+{"adapter": "raw-js",
+ "must_hit": [
+   {"text": "Whist", "min_conf": "medium"},
+   {"text": "Outcomes", "min_conf": "medium"},
+   {"text": "Auction", "min_conf": "medium"},
+   {"text": "Folder", "min_conf": "medium"},
+   {"text": "Maker", "min_conf": "medium"},
+   {"text": "Result", "min_conf": "medium"}
+ ],
+ "must_not": ["Arena", "Bridge", "Loading", "games"]}

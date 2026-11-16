@@ -1,0 +1,75 @@
+{
+  "updated": "2026-11-14",
+  "items": [
+    {
+      "id": "engines-switch",
+      "area": "Engines",
+      "title": "One switch, local or cloud.",
+      "detail": "Built-in engines for 4, 8 and 16 GB GPUs (Ollama), Claude Haiku, DeepSeek, OpenAI and a local + Haiku hybrid.",
+      "status": "done"
+    },
+    {
+      "id": "engines-bench",
+      "area": "Engines",
+      "title": "Benchmark every cloud engine.",
+      "detail": "DeepSeek has a smoke test and OpenAI none yet; each gets a full-pipeline quality run before it is recommended.",
+      "status": "in-progress"
+    },
+    {
+      "id": "engines-bakeoff",
+      "area": "Engines",
+      "title": "Re-run the local model bakeoff.",
+      "detail": "The local tiers rest on the 2026-08-30 bakeoff; newer Ollama models get compared against the incumbents.",
+      "status": "planned"
+    },
+    {
+      "id": "scanner-supported",
+      "area": "Scanner",
+      "title": "Supported tier for web and UI files.",
+      "detail": "JavaScript, TSX, HTML, Vue, Svelte, Astro, XML UI files and Godot scenes pass the held-out bar.",
+      "status": "done"
+    },
+    {
+      "id": "scanner-languages",
+      "area": "Scanner",
+      "title": "More languages to supported.",
+      "detail": "Python, Dart, Kotlin, C#, Rust and Swift run at the basic tier today.",
+      "status": "in-progress"
+    },
+    {
+      "id": "scanner-templates",
+      "area": "Scanner",
+      "title": "Template languages with no scanner yet.",
+      "detail": "HAML, Slim and MDX views are reported as not scanned.",
+      "status": "planned"
+    },
+    {
+      "id": "bench-rounds",
+      "area": "Benchmark",
+      "title": "New held-out rounds.",
+      "detail": "Fresh third-party projects, labelled blind and scored once, before any tier changes.",
+      "status": "in-progress"
+    },
+    {
+      "id": "launch-repo",
+      "area": "Launch",
+      "title": "Public repository and website.",
+      "detail": "Source on GitHub and this site at llm-localizator.dev.",
+      "status": "in-progress"
+    },
+    {
+      "id": "launch-pypi",
+      "area": "Launch",
+      "title": "PyPI release.",
+      "detail": "pip install llm_localizator (the command stays llm-localizator).",
+      "status": "planned"
+    },
+    {
+      "id": "launch-ui-locales",
+      "area": "Launch",
+      "title": "Translated review UI.",
+      "detail": "German, French, Polish and Arabic UI catalogues completed.",
+      "status": "planned"
+    }
+  ]
+}

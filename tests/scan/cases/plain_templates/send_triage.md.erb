@@ -1,0 +1,9 @@
+<% if @user %>
+## You subscribed to <%= @repo.name %> on CodeTriage!
+
+You signed up to help triage GitHub issues on
+<%= link_to "the repo", @repo.url %>. That is pretty awesome.
+
+[Click here to "mute" these emails.](<%= edit_user_url(@user) %>)
+<% end %>
+<%= @repo.name %>

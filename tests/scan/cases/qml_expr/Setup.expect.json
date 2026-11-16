@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "LOCATION NOT FOUND", "min_conf": "medium"},
+   {"text": "CAN'T REACH THE LOCATION SERVICE", "min_conf": "medium"},
+   {"text": "Please check your network connection and try again", "min_conf": "medium"}
+ ],
+ "must_not": ["notfound", "network", "NO_LOCATION_KEY"]}

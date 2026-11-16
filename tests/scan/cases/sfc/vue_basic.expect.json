@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Create account", "min_conf": "medium"},
+              {"text": "Already have an account?", "min_conf": "medium"},
+              {"text": "Forgot password?", "min_conf": "medium"},
+              {"text": "Your email address", "min_conf": "medium"},
+              {"text": "items selected", "min_conf": "medium"}],
+ "must_not": ["btn btn-primary", "px-4 py-2 flex", "/api/v1/items", "background-color", "display: flex"]}

@@ -1,0 +1,3 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Start session", "min_conf": "high"}, {"text": "Status"}, {"text": "Table"}],
+ "must_not": ["Bridge", "primary"]}

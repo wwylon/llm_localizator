@@ -1,0 +1,8 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Disconnected", "min_conf": "medium"},
+   {"text": "Connect to create a private route through Cloudflare.", "min_conf": "medium"},
+   {"text": "Ready when you are", "min_conf": "medium"},
+   {"text": "Could not reach the service", "min_conf": "medium"}
+ ],
+ "must_not": ["pywarp", "app", "warp", "error", "warp-cli", "connect", "Connection failed with code %s"]}

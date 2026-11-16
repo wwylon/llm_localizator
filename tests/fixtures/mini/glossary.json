@@ -1,0 +1,15 @@
+{
+  "doNotTranslate": [
+    "Stayman",
+    "Blackwood"
+  ],
+  "terms": {
+    "trick": {
+      "pl": "lewa",
+      "pl_forbidden": [
+        "sztuczka"
+      ],
+      "ar": "خدعة"
+    }
+  }
+}

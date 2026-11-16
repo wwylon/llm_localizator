@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [],
+ "must_not": ["use client", "1px solid var(--color-ink-100)", "1fr 1fr", "(max-width: 860px) 100vw, 30vw",
+              "X-LLM-Token", "Content-Type", "Organization", "Large Magellanic Cloud", "Wielki Obłok Magellana",
+              "Translator", "Changes", "Stop selected tasks", "Running now", "click",
+              ".hw-row > td:first-child", "Loaded from the cache", "MfaRequiredError",
+              "flex gap-2 md:grid border-[var(--x)]", "row-main"]}

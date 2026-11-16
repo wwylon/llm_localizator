@@ -1,0 +1,9 @@
+{
+  "tactics": {
+    "claim": "Beanspruchen",
+    "concede": "Aufgeben"
+  },
+  "tricks": "{n, plural, one {# Stich} other {# Stiche}}",
+  "watching": "{n, plural, =0 {Niemand schaut zu} one {# schaut zu} other {# schauen zu}}",
+  "convention": "Verwende hier Stayman"
+}

@@ -1,0 +1,3 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Please pick a snippet type", "min_conf": "medium"}],
+ "must_not": ["save changes", "Export JSON", "The snippet must have at least 1 file", "Enable analytics to help improve it", "and share usage"]}

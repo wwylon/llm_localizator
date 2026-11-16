@@ -1,0 +1,28 @@
+---
+import Button from './Button.astro';
+interface Props { title?: string }
+const { title = "Customize your music player" } = Astro.props;
+const cta = "Get started now";
+const iconPath = "M12 2L2 7l10 5 10-5-10-5z";
+---
+
+<!-- Developer note: hero section is never translated yet -->
+<section class="hero flex items-center">
+  <h1>{title}</h1>
+  <p class="tagline">
+    Spicetify lets you change the look of the desktop client with themes and extensions.
+  </p>
+  <Button href="/docs/getting-started" aria-label="Read the installation guide">{cta}</Button>
+  {
+    crumbs.length > 1 && (
+      <nav aria-label="Breadcrumb">
+        <span class="separator" aria-hidden="true">/</span>
+      </nav>
+    )
+  }
+  <svg viewBox="0 0 24 24"><path d={iconPath} /></svg>
+</section>
+
+<style>
+  .hero { content: "Not shown text inside style"; }
+</style>

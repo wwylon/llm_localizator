@@ -1,0 +1,6 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Insights", "min_conf": "medium"},
+   {"text": "Analyse your expenditure breakdowns over various time periods.", "min_conf": "medium"}
+ ],
+ "must_not": ["InsightsWidget"]}

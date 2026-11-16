@@ -1,0 +1,28 @@
+name: Bug report
+description: A command, the scanner or the web UI does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands and a minimal `.llm-localize.toml` / catalogue snippet if possible. Remove API keys.
+  - type: input
+    id: version
+    attributes:
+      label: Version and OS
+      description: Output of `llm-localizator doctor --json` (version, Python, OS) and the engine or model in use.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      render: shell

@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Loading your quizzes", "min_conf": "medium"},
+              {"text": "Save changes", "min_conf": "medium"},
+              {"text": "Home", "min_conf": "medium"},
+              {"text": "Welcome back", "min_conf": "medium"},
+              {"text": "Profile picture", "min_conf": "medium"}],
+ "must_not": ["px-4 py-2 leading-5", "M11.576 1.424a.6.6", "background-color", "/a.png"]}

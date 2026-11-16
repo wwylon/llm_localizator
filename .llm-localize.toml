@@ -1,0 +1,105 @@
+[project]
+name = "llm_localize"
+source_locale = "en"
+
+[catalog]
+format = "json-flat"
+path = "llm_localizator/web/locales/{locale}.json"
+
+[locales]
+targets = ["pl", "de", "ar"]
+# Default LLM sweeps run pl only; thaw de/ar with --locales (ADR-16).
+frozen = []
+length_sensitive = ["de"]
+
+[locales.models]
+# pl (and the default): Claude Haiku 5.5, GPU-free (ADR-155 waiver, experiments/quality_bakeoff/WAIVERS.md).
+# de/ar thawed 2026-11-14 (user decision): they follow the Haiku default too. Old local Winners were
+# de aya-expanse:8b, ar translategemma:4b (0.943); the GPU is needed for training.
+default = "claude-haiku-5-5"
+
+[provider]
+kind = "anthropic"
+
+# Named cheap-cloud providers for on_request / --model smoke (ADR-111).
+# Keys stay in the environment. Do not swap [locales.models] without ADR-12.
+[providers.local]
+name = "Local Ollama"
+kind = "ollama"
+url = "http://localhost:11434"
+
+[providers.anthropic_haiku]
+name = "Anthropic Haiku 5.5"
+kind = "anthropic"
+
+[providers.openai_luna]
+name = "OpenAI Luna"
+kind = "openai"
+
+[providers.deepseek_flash]
+name = "DeepSeek Flash"
+kind = "deepseek"
+
+# Cloud is on for the dogfood project (user, 2026-11-14): ANTHROPIC_API_KEY from the environment.
+[privacy]
+allow_cloud = true
+
+[prompt]
+domain = "a developer tool web UI for managing software localization — translation status, filtering, and inline editing"
+glossary = "i18n/glossary.json"
+context_dir = "i18n/context"
+examples_file = "i18n/examples.json"
+register = "informal"
+
+# Engine sidecars: ~/.llm_localize/data/llm_localize/ (ADR-112 default).
+
+[quality]
+# 0.63 = 0.55 + Haiku's self-scoring shift (CLOUD_SCORER_2026-11-14.md); 0.55 was tuned on aya BT.
+threshold = 0.63
+improve_model = "claude-haiku-5-5"
+score_model = "claude-haiku-5-5"
+improve_limit = 50
+multi_sample = 1
+improve_multi_sample = 3
+
+[translate]
+batch_size = 10
+enabled = true
+min_keys = 50
+max_consecutive_rejects = 10
+
+[budget]
+# User cap, 2026-11-14. A full pl sweep of the UI catalogue is about $0.20 on Haiku.
+monthly_usd = 5
+# dynamic: scheduled sweeps may spend within the cap (on_request allows only named --keys runs).
+mode = "dynamic"
+cloud_batch = true
+
+[workflows.default]
+high = 0.8
+low = 0.55
+max_improve_loops = 2
+
+[workflows.ww]
+high = 0.8
+low = 0.55
+max_improve_loops = 2
+
+[web]
+# ADR-110: enable en-XX leftover hunt in the dogfood review UI. Omit or []
+# in production consumers so the marker never appears in the picker.
+qa_locales = ["en-XX"]
+
+[scan]
+adapter = "raw-js"
+src_dirs = ["llm_localizator/web"]
+exclude = ["llm_localizator/web/locales", "llm_localizator/web/overlay"]
+
+# Nested help articles (title/body). Served at /locales/help/{locale}.json;
+# not part of the flat chrome message catalogue (ADR-style separation).
+[collections.help]
+dir = "llm_localizator/web/locales/help"
+format = "json"
+
+[engine]
+id = "claude-haiku"

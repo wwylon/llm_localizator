@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" role="img" aria-label="Scanner precision and recall on 12 held-out projects" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">
+<rect width="720" height="380" rx="14" fill="#0B1B33"/>
+<text x="28" y="40" font-size="20" font-weight="700" fill="#FFFFFF">Hardcoded-string scanner on 12 unseen projects</text>
+<text x="28" y="62" font-size="13" fill="#A9B8CF">Labelled by blind agents that never saw scanner output; scored once.</text>
+<text x="28" y="114" font-size="14" fill="#E6EEF9">Precision (macro)</text><rect x="210" y="96" width="420" height="26" rx="5" fill="#16294A"/><rect x="210" y="96" width="382" height="26" rx="5" fill="#2E7D5B"/><text x="602" y="114" font-size="14" font-weight="700" fill="#FFFFFF">0.91</text>
+<text x="28" y="154" font-size="14" fill="#E6EEF9">Recall (macro)</text><rect x="210" y="136" width="420" height="26" rx="5" fill="#16294A"/><rect x="210" y="136" width="143" height="26" rx="5" fill="#5B9BD5"/><text x="363" y="154" font-size="14" font-weight="700" fill="#FFFFFF">0.34</text>
+<text x="28" y="198" font-size="13" font-weight="700" fill="#F5B82E">Recall by where the text lives</text>
+<text x="28" y="227" font-size="13" fill="#E6EEF9">Code</text><rect x="210" y="212" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="212" width="227" height="20" rx="4" fill="#5B9BD5"/><text x="447" y="227" font-size="13" fill="#FFFFFF">0.54</text>
+<text x="28" y="255" font-size="13" fill="#E6EEF9">Templates</text><rect x="210" y="240" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="240" width="244" height="20" rx="4" fill="#5B9BD5"/><text x="464" y="255" font-size="13" fill="#FFFFFF">0.58</text>
+<text x="28" y="283" font-size="13" fill="#E6EEF9">UI-definition files</text><rect x="210" y="268" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="268" width="134" height="20" rx="4" fill="#5B9BD5"/><text x="354" y="283" font-size="13" fill="#FFFFFF">0.32</text>
+<text x="28" y="311" font-size="13" fill="#E6EEF9">Manifests</text><rect x="210" y="296" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="296" width="67" height="20" rx="4" fill="#5B9BD5"/><text x="287" y="311" font-size="13" fill="#FFFFFF">0.16</text>
+<text x="28" y="339" font-size="13" fill="#E6EEF9">Content (md, yaml)</text><rect x="210" y="324" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="324" width="0" height="20" rx="4" fill="#5B9BD5"/><text x="220" y="339" font-size="13" fill="#FFFFFF">0.00</text>
+<text x="28" y="374" font-size="12" fill="#A9B8CF">When it flags a string, it is usually right. It still misses about two thirds of the text, so treat the output as a worklist.</text></svg>

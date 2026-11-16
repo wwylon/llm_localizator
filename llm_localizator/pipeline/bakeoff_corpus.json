@@ -1,0 +1,394 @@
+[
+  {
+    "key": "btn.save",
+    "source": "Save",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.cancel",
+    "source": "Cancel",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.delete",
+    "source": "Delete",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.edit",
+    "source": "Edit",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.add",
+    "source": "Add",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.back",
+    "source": "Back",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.next",
+    "source": "Next",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.confirm",
+    "source": "Confirm",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.close",
+    "source": "Close",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.retry",
+    "source": "Retry",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.upload",
+    "source": "Upload",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.download",
+    "source": "Download",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.share",
+    "source": "Share",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.copy",
+    "source": "Copy",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.paste",
+    "source": "Paste",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.search",
+    "source": "Search",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.filter",
+    "source": "Filter",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.reset",
+    "source": "Reset",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.apply",
+    "source": "Apply",
+    "bucket": "buttons"
+  },
+  {
+    "key": "btn.done",
+    "source": "Done",
+    "bucket": "buttons"
+  },
+  {
+    "key": "menu.settings",
+    "source": "Settings",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.account",
+    "source": "Account",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.billing",
+    "source": "Billing",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.help",
+    "source": "Help",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.logout",
+    "source": "Log out",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.profile",
+    "source": "Profile",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.notifications",
+    "source": "Notifications",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.security",
+    "source": "Security",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.privacy",
+    "source": "Privacy",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.language",
+    "source": "Language",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.workspace",
+    "source": "Workspace",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.members",
+    "source": "Members",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.integrations",
+    "source": "Integrations",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.apiKeys",
+    "source": "API keys",
+    "bucket": "menus"
+  },
+  {
+    "key": "menu.auditLog",
+    "source": "Audit log",
+    "bucket": "menus"
+  },
+  {
+    "key": "err.required",
+    "source": "This field is required",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.invalidEmail",
+    "source": "Enter a valid email address",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.network",
+    "source": "Network error. Please try again.",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.unauthorized",
+    "source": "You are not authorized to perform this action",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.notFound",
+    "source": "The requested resource was not found",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.conflict",
+    "source": "This change conflicts with a newer version",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.rateLimit",
+    "source": "Too many requests. Wait a moment and retry.",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.server",
+    "source": "Something went wrong on our side",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.timeout",
+    "source": "The request timed out",
+    "bucket": "errors"
+  },
+  {
+    "key": "err.forbidden",
+    "source": "Access denied",
+    "bucket": "errors"
+  },
+  {
+    "key": "toast.saved",
+    "source": "Changes saved",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.deleted",
+    "source": "Item deleted",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.copied",
+    "source": "Copied to clipboard",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.invited",
+    "source": "Invitation sent",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.updated",
+    "source": "Updated successfully",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.queued",
+    "source": "Added to the queue",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.failed",
+    "source": "Action failed",
+    "bucket": "notifications"
+  },
+  {
+    "key": "toast.offline",
+    "source": "You are offline",
+    "bucket": "notifications"
+  },
+  {
+    "key": "acct.deleteTitle",
+    "source": "Delete your account",
+    "bucket": "account"
+  },
+  {
+    "key": "acct.deleteBody",
+    "source": "This permanently removes your data and cannot be undone.",
+    "bucket": "account"
+  },
+  {
+    "key": "acct.password",
+    "source": "Change password",
+    "bucket": "account"
+  },
+  {
+    "key": "acct.email",
+    "source": "Email address",
+    "bucket": "account"
+  },
+  {
+    "key": "acct.twoFactor",
+    "source": "Two-factor authentication",
+    "bucket": "account"
+  },
+  {
+    "key": "acct.sessions",
+    "source": "Active sessions",
+    "bucket": "account"
+  },
+  {
+    "key": "acct.export",
+    "source": "Export my data",
+    "bucket": "account"
+  },
+  {
+    "key": "var.greeting",
+    "source": "Hello, {name}",
+    "bucket": "variables"
+  },
+  {
+    "key": "var.files",
+    "source": "{count, plural, one {# file} other {# files}}",
+    "bucket": "variables"
+  },
+  {
+    "key": "var.progress",
+    "source": "{done} of {total} complete",
+    "bucket": "variables"
+  },
+  {
+    "key": "var.remaining",
+    "source": "{n} remaining",
+    "bucket": "variables"
+  },
+  {
+    "key": "var.owner",
+    "source": "Owned by {user}",
+    "bucket": "variables"
+  },
+  {
+    "key": "var.updated",
+    "source": "Updated {relativeTime}",
+    "bucket": "variables"
+  },
+  {
+    "key": "var.invite",
+    "source": "Invite {email} to {workspace}",
+    "bucket": "variables"
+  },
+  {
+    "key": "long.onboarding",
+    "source": "Welcome to your workspace. Invite teammates, connect integrations, and start translating UI strings with your local models.",
+    "bucket": "long"
+  },
+  {
+    "key": "long.privacy",
+    "source": "We store translation state and history on disk in your project. No catalogue text is sent to cloud providers unless you enable a budget and select Anthropic or DeepL for a locale.",
+    "bucket": "long"
+  },
+  {
+    "key": "long.empty",
+    "source": "No strings match the current filters. Clear filters or switch namespace to see more rows.",
+    "bucket": "long"
+  },
+  {
+    "key": "amb.board",
+    "source": "Board",
+    "bucket": "ambiguous",
+    "message_key": "play.board",
+    "context": "bridge card game UI — a board is one dealt deal, not furniture or a beach"
+  },
+  {
+    "key": "amb.claim",
+    "source": "Claim",
+    "bucket": "ambiguous",
+    "message_key": "play.claim",
+    "context": "bridge card game UI — claim remaining tricks, not an insurance claim"
+  },
+  {
+    "key": "amb.pot",
+    "source": "Pot",
+    "bucket": "ambiguous",
+    "message_key": "scoring.pot",
+    "context": "bridge scoring UI — the pot of points, not cookware"
+  },
+  {
+    "key": "amb.run",
+    "source": "Run",
+    "bucket": "ambiguous",
+    "message_key": "play.run",
+    "context": "card game UI — a run of consecutive cards, not to execute software"
+  },
+  {
+    "key": "amb.table",
+    "source": "Table",
+    "bucket": "ambiguous",
+    "message_key": "play.table",
+    "context": "bridge card game UI — the table where four players sit, not a data grid"
+  },
+  {
+    "key": "amb.hand",
+    "source": "Hand",
+    "bucket": "ambiguous",
+    "message_key": "play.hand",
+    "context": "bridge card game UI — the thirteen cards held by a player"
+  }
+]

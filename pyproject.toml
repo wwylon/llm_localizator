@@ -1,0 +1,104 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+# PyPI distribution name. The import package is llm_localizator and the command is
+# llm-localizator; "llm-localize" on PyPI is an unrelated project.
+name = "llm_localizator"
+version = "0.2.0"
+description = "Localisation engine: find hardcoded strings, translate with local or cloud LLMs, validate and review message catalogues"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Wojtek Wylon" }]
+keywords = [
+    "i18n", "l10n", "localization", "localisation", "translation", "llm", "ollama",
+    "hardcoded-strings", "message-catalog", "gettext", "icu", "cli",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Internationalization",
+    "Topic :: Software Development :: Localization",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+# Runtime deps are deliberately minimal: the Ollama client is stdlib urllib.
+# tomllib is stdlib on 3.11+. PyYAML is only needed for the registry and the
+# taskqueue blueprint generator.
+dependencies = [
+    "pyyaml>=6.0,<7",
+    "tomlkit>=0.13",
+]
+
+[project.optional-dependencies]
+hyphens = ["pyphen>=0.14"]
+ctranslate2 = ["ctranslate2>=4.0", "sentencepiece>=0.2"]
+embeddings = ["sentence-transformers>=3.0"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.5", "ruff>=0.6", "coverage[toml]>=7.0"]
+mcp = ["mcp>=1.2"]
+xlsx = ["openpyxl>=3.1"]
+e2e = ["playwright>=1.45", "pillow>=10"]
+
+[project.urls]
+Homepage = "https://llm-localizator.dev"
+Repository = "https://github.com/wwylon/llm_localizator"
+Issues = "https://github.com/wwylon/llm_localizator/issues"
+Changelog = "https://github.com/wwylon/llm_localizator/blob/main/CHANGELOG.md"
+
+[project.scripts]
+llm-localizator = "llm_localizator.cli.main:main"
+# Old command name: consumer CI, taskqueue blueprints and docs still call it.
+llm-localize = "llm_localizator.cli.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llm_localizator"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The default run is hermetic and fast: no model, no network, no consumer
+# checkout. Opt into the rest explicitly -- `pytest -m ollama`, or
+# `pytest -m live_bridge` with LLM_LOCALIZE_BRIDGE_ROOT set.
+#
+# Without this the marked tests run by default and the suite goes from ~3s to
+# ~55s, which is the difference between a suite you run on every edit and one
+# you avoid.
+addopts = "-m 'not ollama and not live_bridge and not browser'"
+markers = [
+    "ollama: requires a live Ollama server and a pulled model",
+    "live_bridge: requires LLM_LOCALIZE_BRIDGE_ROOT pointing at a consumer checkout",
+    "browser: needs playwright + chromium (run with `-m browser`, extra e2e)",
+    "slow: hermetic but heavy (sleeps, large fixtures, subprocess); still in default suite",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["experiments", "plan"]
+
+[tool.ruff.lint]
+# Correctness only (undefined names, syntax errors, unused imports in code paths);
+# style rules would churn the tree. Run: uvx ruff check llm_localizator
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = false
+files = ["llm_localizator/core", "llm_localizator/catalog"]
+
+[tool.coverage.run]
+source = ["llm_localizator"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

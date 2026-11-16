@@ -1,0 +1,20 @@
+id = "local-8gb"
+name = "Local Ollama, 8 GB GPU (aya-expanse:8b)"
+summary = "Free and private. aya-expanse:8b (about 5.2 GiB) for every role; the 2026-08-30 bakeoff Winner for most locales."
+status = "benchmarked"
+evidence = "experiments/quality_bakeoff/REPORT.md Winners 2026-08-30 (re-bakeoff due: older than 45 days)"
+
+[requires]
+cloud = false
+vram_gib = 6
+
+[config.provider]
+kind = "ollama"
+
+[config.locales.models]
+default = "aya-expanse:8b"
+
+[config.quality]
+improve_model = "aya-expanse:8b"
+score_model = "aya-expanse:8b"
+threshold = 0.55

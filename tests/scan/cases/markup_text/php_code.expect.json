@@ -1,0 +1,8 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Account settings", "min_conf": "medium"},
+  {"text": "Change your password below.", "min_conf": "medium"}
+ ],
+ "must_not": ["if ($count > 0) { $label = \"x\"; }", "0) { $label = \"x\"; }"]
+}

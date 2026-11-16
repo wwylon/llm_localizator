@@ -1,0 +1,6 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Game result not found", "min_conf": "medium"},
+              {"text": "Could not load the quiz right now", "min_conf": "medium"},
+              {"text": "View", "min_conf": "medium"},
+              {"text": "Actions", "min_conf": "medium"}],
+ "must_not": ["Looking up the game result for the dashboard", "game id must be positive when calling lookup", ":id"]}

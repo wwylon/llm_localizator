@@ -1,0 +1,44 @@
+{
+ "adapter": "raw-js",
+ "must_hit": [
+  {
+   "text": "made",
+   "min_conf": "medium"
+  },
+  {
+   "text": "missed",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Hand",
+   "min_conf": "medium"
+  },
+  {
+   "text": "days ago",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Bots thinking",
+   "min_conf": "medium"
+  },
+  {
+   "text": "CPU",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "api/runs",
+  "btn-",
+  "px",
+  "SELECT",
+  "loaded",
+  "filters.",
+  "face-down",
+  "panel-",
+  "rotate(",
+  "var(--",
+  "match_",
+  "variant:",
+  "mailto:"
+ ]
+}

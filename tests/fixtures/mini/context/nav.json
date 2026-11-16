@@ -1,0 +1,7 @@
+{
+  "unreadCount": {
+    "note": "Badge on the messages icon",
+    "screen": "nav",
+    "maxChars": 12
+  }
+}

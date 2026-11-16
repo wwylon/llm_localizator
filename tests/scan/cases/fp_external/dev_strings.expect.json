@@ -1,0 +1,3 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Snippet exported to your folder!", "min_conf": "medium"}],
+ "must_not": ["Enter", "Tab", "Space", "Started Game", "user interaction", "create snippet", "Saved Snippet", "CodeMirror-linenumbers", "CodeMirror-foldgutter", "Ctrl + S", "command + F", "Entity Not Found"]}

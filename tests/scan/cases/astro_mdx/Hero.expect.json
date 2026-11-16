@@ -1,0 +1,10 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Customize your music player", "min_conf": "medium"},
+   {"text": "Get started now", "min_conf": "medium"},
+   {"text": "Spicetify lets you change the look of the desktop client", "min_conf": "medium"},
+   {"text": "Read the installation guide", "min_conf": "medium"},
+   {"text": "Breadcrumb", "min_conf": "medium"}
+ ],
+ "must_not": ["hero flex items-center", "Developer note: hero section is never translated yet", "Not shown text inside style",
+              "/docs/getting-started", "M12 2L2 7l10 5 10-5-10-5z", "./Button.astro", "tagline", "---"]}

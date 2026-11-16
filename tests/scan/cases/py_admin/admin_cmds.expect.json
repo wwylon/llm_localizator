@@ -1,0 +1,8 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Email address must not contain line breaks.", "min_conf": "medium"},
+   {"text": "Requeue selected emails", "min_conf": "medium"},
+   {"text": "Delete orphaned attachments.", "min_conf": "medium"},
+   {"text": "Absolute path of lockfile to acquire", "min_conf": "medium"}
+ ],
+ "must_not": ["-l", "--lockfile", "\n"]}

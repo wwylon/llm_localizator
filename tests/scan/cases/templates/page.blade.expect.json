@@ -1,0 +1,5 @@
+{"adapter": "source",
+ "must_hit": [{"text": "new messages", "min_conf": "medium"},
+              {"text": "Your email address", "min_conf": "medium"},
+              {"text": "Unread messages found", "min_conf": "medium"}],
+ "must_not": ["Remove this banner before launch", "Save your changes", "btn btn-primary", "layouts.app", "zzvarzz"]}

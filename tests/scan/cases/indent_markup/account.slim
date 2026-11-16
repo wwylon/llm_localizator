@@ -1,0 +1,21 @@
+doctype html
+/ A developer comment
+  still a comment
+- user = current_user
+section.account
+  h1 Account settings
+  p
+    | Change how your profile looks
+      to other people on the site.
+  ul
+    li: a href="/billing" Billing details
+    li = link_to "Delete my account", account_path, data: { confirm: "Are you sure you want to delete it?" }
+  label for="name" Display name
+  input type="text" name="name" placeholder="Your full name"
+  button.btn.btn-primary type="submit" Save changes
+  p.hint = t(".hint_routed")
+  ' Welcome back,
+  = user.name
+  p Last login #{user.last_login}
+javascript:
+  alert("never shown");

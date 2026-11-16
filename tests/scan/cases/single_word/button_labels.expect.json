@@ -1,0 +1,9 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Close", "min_conf": "medium"},
+  {"text": "Delete", "min_conf": "medium"},
+  {"text": "Copy", "min_conf": "medium"}
+ ],
+ "must_not": ["button", "submit"]
+}

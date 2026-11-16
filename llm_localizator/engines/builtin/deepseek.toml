@@ -1,0 +1,24 @@
+id = "deepseek"
+name = "DeepSeek Flash (cloud, every role)"
+summary = "No GPU. Best mean BT in the 2026-11-01 pl smoke (0.832); its own scoring scale is not calibrated yet."
+status = "smoke"
+evidence = "CLOUD_SMOKE_2026-11-01 (pl gate pass as translator, BT scored by aya)"
+
+[requires]
+cloud = true
+api_key_env = "DEEPSEEK_API_KEY"
+vram_gib = 0
+
+[config.provider]
+kind = "deepseek"
+
+[config.locales.models]
+default = "deepseek-flash"
+
+[config.quality]
+improve_model = "deepseek-flash"
+score_model = "deepseek-flash"
+score_provider = "deepseek"
+
+[config.translate]
+cloud_batch_size = 50

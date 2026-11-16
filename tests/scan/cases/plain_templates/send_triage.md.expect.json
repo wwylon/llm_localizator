@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "You subscribed to {x} on CodeTriage!", "min_conf": "medium"},
+   {"text": "You signed up to help triage GitHub issues on", "min_conf": "medium"},
+   {"text": "Click here to", "min_conf": "medium"}
+ ],
+ "must_not": ["{x}", "zzvarzz"]}

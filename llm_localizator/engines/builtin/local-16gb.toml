@@ -1,0 +1,20 @@
+id = "local-16gb"
+name = "Local Ollama, 16 GB GPU (aya-expanse:8b + qwen2.5:14b)"
+summary = "Free and private. aya translates; the larger qwen2.5:14b (about 9.2 GiB) scores and improves. Not benchmarked yet."
+status = "unbenchmarked"
+evidence = ""
+
+[requires]
+cloud = false
+vram_gib = 10
+
+[config.provider]
+kind = "ollama"
+
+[config.locales.models]
+default = "aya-expanse:8b"
+
+[config.quality]
+improve_model = "qwen2.5:14b"
+score_model = "qwen2.5:14b"
+threshold = 0.55

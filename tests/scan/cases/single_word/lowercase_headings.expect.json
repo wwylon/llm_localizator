@@ -1,0 +1,7 @@
+{"adapter": "raw-js",
+ "must_hit": [
+   {"text": "board", "min_conf": "medium"},
+   {"text": "result", "min_conf": "medium"},
+   {"text": "transport", "min_conf": "medium"}
+ ],
+ "must_not": ["hand_id", "stdio", "42", "ok", "timeout_forfeit", "full", "bid"]}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Melodia
+Name[pl]=Melodia
+GenericName=Music Player
+Comment=Play your music library offline
+Comment[pl]=Odtwarzaj muzykę
+Exec=melodia %U
+Icon=melodia
+Categories=Audio;Player;

@@ -1,0 +1,8 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Create an account", "min_conf": "medium"},
+   {"text": "Email address", "min_conf": "medium"},
+   {"text": "Sign up now", "min_conf": "medium"},
+   {"text": "Already have an account?", "min_conf": "medium"}
+ ],
+ "must_not": ["form-label", "form-control", "btn btn-primary", "small-link", "routed_key", "Internal developer note here"]}

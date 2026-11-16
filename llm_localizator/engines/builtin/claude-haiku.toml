@@ -1,0 +1,25 @@
+id = "claude-haiku"
+name = "Claude Haiku 5.5 (cloud, every role)"
+summary = "No GPU. Haiku translates, back-translates and improves; about $0.12 per 2,300-key locale sweep."
+status = "waiver"
+evidence = "CLOUD_SMOKE_2026-11-01 (pl gate pass), CLOUD_SCORER_2026-11-14 (threshold 0.63), ADR-155"
+
+[requires]
+cloud = true
+api_key_env = "ANTHROPIC_API_KEY"
+vram_gib = 0
+
+[config.provider]
+kind = "anthropic"
+
+[config.locales.models]
+default = "claude-haiku-5-5"
+
+[config.quality]
+improve_model = "claude-haiku-5-5"
+score_model = "claude-haiku-5-5"
+score_provider = "anthropic"
+threshold = 0.63
+
+[config.translate]
+cloud_batch_size = 50

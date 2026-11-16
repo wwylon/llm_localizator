@@ -1,0 +1,14 @@
+Hi moderator!
+
+{{ reporter }} has just reported a spam review.
+
+Please take a look at the reports page for more information.
+
+host: {{ report.host }}
+Reported by: {{ reporter }}
+
+{% blocktranslate trimmed %}
+    An appointment with {{ client }} has been
+    rescheduled.
+{% endblocktranslate %}
+{% blocktrans %}Dear {{ name }},{% endblocktrans %}

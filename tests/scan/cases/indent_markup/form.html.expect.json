@@ -1,0 +1,63 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {
+   "text": "Notify via email",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Oops, an error occurred:",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Enter your email address to receive a notification.",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Will only be used for one notification.",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Gem",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Show earlier Rails versions",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Search gems",
+   "min_conf": "medium"
+  },
+  {
+   "text": "About this site",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Signed in as",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Notify me",
+   "min_conf": "medium"
+  },
+  {
+   "text": "become a sponsor",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "A developer comment that is never shown",
+  "nested comment line",
+  "form-label",
+  "form-control",
+  "btn btn-primary",
+  "float-end",
+  "never shown text here",
+  "already_translated",
+  "please_wait",
+  "search",
+  "5",
+  "https://example.com/sponsors"
+ ]
+}

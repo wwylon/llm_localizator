@@ -1,0 +1,16 @@
+{
+  "filterUntranslated": {
+    "note": "Short filter-chip label meaning 'not yet translated'. Prefer a natural UI phrase (pl: 'bez tłumaczenia'), never an English calque like 'nietranslateowane'.",
+    "screen": "filters",
+    "maxChars": 24
+  },
+  "modalAdd": {
+    "note": "Button: add a locale and enqueue a translation job. 'queue' means task queue / warteschlange / kolejka — never encrypt/cipher.",
+    "screen": "add-locale-modal",
+    "maxChars": 28
+  },
+  "keepToast": {
+    "note": "Toast after marking a string as intentionally left untranslated.",
+    "screen": "toast"
+  }
+}

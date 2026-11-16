@@ -1,0 +1,29 @@
+package pages
+
+import "fmt"
+
+templ Dashboard(items []Item) {
+	<div class="p-4 flex">
+		<h1>Proxy dashboard</h1>
+		<button type="button" title="Restart the proxy" hx-post="/restart">Restart</button>
+		<p>Health: { item.Health }</p>
+		if len(items) == 0 {
+			<p>No proxies configured yet</p>
+		} else {
+			for _, it := range items {
+				<span>{ it.Name }</span>
+			}
+		}
+		<input placeholder="Search proxies" />
+		<a href={ templ.URL("/docs") }>Docs</a>
+		@Footer()
+	</div>
+}
+
+css hidden() {
+	display: none;
+}
+
+func helper() string {
+	return fmt.Sprintf("%d", 1)
+}

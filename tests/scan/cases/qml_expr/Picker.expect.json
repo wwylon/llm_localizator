@@ -1,0 +1,11 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Done", "min_conf": "medium"},
+  {"text": "Unknown source", "min_conf": "medium"},
+  {"text": "Fluid background", "min_conf": "medium"},
+  {"text": "Images (*.png *.jpg)", "min_conf": "medium"},
+  {"text": "Picker is released under the MIT License", "min_conf": "medium"}
+ ],
+ "must_not": ["Normal", "Video", "left", "right", "Permission is hereby granted"]
+}

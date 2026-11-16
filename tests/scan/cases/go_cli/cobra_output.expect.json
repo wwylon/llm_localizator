@@ -1,0 +1,21 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {
+   "text": "Agent Session for",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Not authenticated. Run 'linctl auth' first.",
+   "min_conf": "medium"
+  },
+  {
+   "text": "No agent delegation found for",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "debug: cache size %d",
+  "%s-%s"
+ ]
+}

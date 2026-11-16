@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Unmark cards as done", "min_conf": "medium"},
+              {"text": "Mark cards as done", "min_conf": "medium"},
+              {"text": "Show all rows", "min_conf": "medium"},
+              {"text": "Hide empty rows", "min_conf": "medium"},
+              {"text": "Currently enabled for you", "min_conf": "medium"},
+              {"text": "Currently disabled for you", "min_conf": "medium"}]}

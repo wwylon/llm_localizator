@@ -1,0 +1,9 @@
+@{ var title = "Ignored code value"; }
+<h1>Orders</h1>
+@if (Model.Empty) {
+    <p>No orders yet</p>
+    var count = Model.Items.Count;
+} else {
+    <p>You have @count orders waiting</p>
+}
+@code { string hidden = "Hidden code text"; }

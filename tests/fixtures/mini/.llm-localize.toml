@@ -1,0 +1,30 @@
+[project]
+name = "mini"
+source_locale = "en"
+# Fixture keeps sidecars next to catalogues (production default is engine).
+data_home = "project"
+
+[catalog]
+format = "json-nested"
+path = "messages/{locale}/{namespace}.json"
+skip_keys = ["brand"]
+
+[locales]
+targets = ["pl", "ar", "de", "cs"]
+
+[locales.models]
+default = "testmodel"
+
+[provider]
+kind = "null"
+
+[translate]
+min_keys = 0
+
+[prompt]
+domain = "a bridge card-game web application"
+glossary = "glossary.json"
+context_dir = "context"
+
+[state]
+dir = "messages/.state"

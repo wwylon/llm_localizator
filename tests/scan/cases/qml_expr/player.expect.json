@@ -1,0 +1,8 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Music Player", "min_conf": "medium"},
+  {"text": "Play your music library offline", "min_conf": "medium"}
+ ],
+ "must_not": ["Melodia", "Odtwarzaj muzykę", "melodia %U", "Audio;Player;"]
+}

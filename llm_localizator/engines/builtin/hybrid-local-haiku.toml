@@ -1,0 +1,22 @@
+id = "hybrid-local-haiku"
+name = "Local translation, Haiku scoring"
+summary = "aya-expanse:8b translates on your GPU; Claude Haiku 5.5 back-translates and scores (cents per sweep). Not benchmarked yet."
+status = "unbenchmarked"
+evidence = "CLOUD_SCORER_2026-11-14: Haiku BT rates aya output about 0.10 lower than aya BT did"
+
+[requires]
+cloud = true
+api_key_env = "ANTHROPIC_API_KEY"
+vram_gib = 6
+
+[config.provider]
+kind = "ollama"
+
+[config.locales.models]
+default = "aya-expanse:8b"
+
+[config.quality]
+improve_model = "aya-expanse:8b"
+score_model = "claude-haiku-5-5"
+score_provider = "anthropic"
+threshold = 0.55

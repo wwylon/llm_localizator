@@ -1,0 +1,8 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "He said \"hello\" to the whole team", "min_conf": "medium"},
+  {"text": "Saved {count} files to the archive", "min_conf": "medium"}
+ ],
+ "must_not": ["C:\\temp\\"]
+}

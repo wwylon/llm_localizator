@@ -1,0 +1,8 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Do not modify", "min_conf": "medium"},
+   {"text": "Save in tag", "min_conf": "medium"},
+   {"text": "Not a numeric value", "min_conf": "medium"},
+   {"text": "Finished downloading album", "min_conf": "medium"}
+ ],
+ "must_not": ["download_folder", "System.ComponentModel"]}

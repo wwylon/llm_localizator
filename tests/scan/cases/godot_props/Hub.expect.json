@@ -1,0 +1,22 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {
+   "text": "brick & mortar",
+   "min_conf": "medium"
+  },
+  {
+   "text": "The Core",
+   "min_conf": "medium"
+  },
+  {
+   "text": "fork in the road",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "Brick",
+  "D",
+  "This container is needed because the panel style breaks otherwise."
+ ]
+}

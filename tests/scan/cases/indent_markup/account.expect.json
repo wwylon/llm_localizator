@@ -1,0 +1,14 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Account settings", "min_conf": "medium"},
+   {"text": "Change how your profile looks", "min_conf": "medium"},
+   {"text": "Billing details", "min_conf": "medium"},
+   {"text": "Delete my account", "min_conf": "medium"},
+   {"text": "Are you sure you want to delete it?", "min_conf": "medium"},
+   {"text": "Display name", "min_conf": "medium"},
+   {"text": "Your full name", "min_conf": "medium"},
+   {"text": "Save changes", "min_conf": "medium"},
+   {"text": "Welcome back,", "min_conf": "medium"},
+   {"text": "Last login", "min_conf": "medium"}
+ ],
+ "must_not": ["A developer comment", "still a comment", "btn btn-primary", "hint_routed", "never shown", "submit", "text", "name"]}

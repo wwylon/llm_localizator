@@ -1,0 +1,37 @@
+{
+ "adapter": "raw-js",
+ "must_hit": [
+  {
+   "text": "NS tricks",
+   "min_conf": "medium"
+  },
+  {
+   "text": "exit code",
+   "min_conf": "medium"
+  },
+  {
+   "text": "stop reason",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Browser engines are not built; using the server.",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Peak memory",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "tt-l-ns",
+  "rt-l-ns",
+  "tt-l-ew",
+  "debug only message here",
+  "table.ew",
+  "VRAM",
+  "0.0 GiB",
+  "var(--fail)",
+  "#a855f7",
+  "Starting native bench…"
+ ]
+}

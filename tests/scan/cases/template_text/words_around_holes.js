@@ -1,0 +1,20 @@
+const made = lh.made ? `made (${lh.decl_pts} pts)` : `missed (${lh.bid})`;
+let t = `Hand ${(s.hand_no || 0) + 1}`;
+function ago(days) { return `${days} days ago`; }
+el.textContent = `Bots thinking ${n}`;
+const url = `${base}/api/runs/${id}`;
+const cls = `btn-${kind}`;
+const w = `${width}px`;
+const q = `SELECT * FROM ${table}`;
+console.log(`loaded ${n} rows`);
+const auth = `Bearer ${token}`;
+const key = `${ns}.${key}`;
+const label = i18n.t(`filters.${kind}`);
+const cls2 = `playing-card face-down ${size} ${className}`;
+const id = `panel-${def.id}-title`;
+const tr = `rotate(${a})`;
+const css = `var(--regime-${r}) ${at}%`;
+const file = `match_${seed}.yaml`;
+const line = `variant: ${form.variant}`;
+const mail = `mailto:${email}`;
+const cpu = `CPU ${n} cores`;

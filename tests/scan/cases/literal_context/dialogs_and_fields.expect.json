@@ -1,0 +1,5 @@
+{"adapter": "raw-js",
+ "must_hit": [{"text": "Going alone"}, {"text": "The maker may play without a partner.", "min_conf": "high"},
+              {"text": "Stop all running tasks?", "min_conf": "high"}, {"text": "API token saved", "min_conf": "high"},
+              {"text": "API token cleared", "min_conf": "high"}, {"text": "New research thread", "min_conf": "high"}],
+ "must_not": ["alone"]}

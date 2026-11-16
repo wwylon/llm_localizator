@@ -1,0 +1,52 @@
+# Manual-only for now (workflow_dispatch). The default pytest run is hermetic.
+
+name: CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]  # the primary dev host is Windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (locked)
+        run: uv sync --locked --extra dev --extra hyphens
+      - name: Tests
+        # The default run is hermetic. Marker-gated suites (ollama, live_bridge)
+        # need a GPU host or a consumer checkout and are excluded here.
+        run: uv run pytest -q -m "not ollama and not live_bridge"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Ruff
+        run: uvx ruff check llm_localizator
+
+  self-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (locked)
+        run: uv sync --locked
+      - name: Validate own catalogue
+        # Dogfood: llm_localizator validates its own message catalogue.
+        run: uv run llm-localizator validate --format github
+
+  self-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (locked)
+        run: uv sync --locked
+      - name: Sync dry-run (backlog surface)
+        run: uv run llm-localizator run-sync --dry-run

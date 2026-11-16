@@ -1,0 +1,9 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Proxy dashboard", "min_conf": "medium"},
+              {"text": "Restart", "min_conf": "medium"},
+              {"text": "Restart the proxy", "min_conf": "medium"},
+              {"text": "No proxies configured yet", "min_conf": "medium"},
+              {"text": "Search proxies", "min_conf": "medium"},
+              {"text": "Docs", "min_conf": "medium"},
+              {"text": "Health:", "min_conf": "medium"}],
+ "must_not": ["p-4 flex", "/restart", "display: none", "fmt", "templ.URL", "%d", "zzvarzz"]}

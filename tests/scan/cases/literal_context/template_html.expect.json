@@ -1,0 +1,4 @@
+{"adapter": "raw-js",
+ "must_hit": [{"text": "Filter title…"}, {"text": "Loading results", "min_conf": "high"},
+              {"text": "Bots thinking…"}],
+ "must_not": ["pager", "rx=\"2\" fill=\"", "\" rx=\"2\" fill=\""]}

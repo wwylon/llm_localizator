@@ -1,0 +1,9 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "run with params", "min_conf": "medium"},
+  {"text": "Dangerous command ahead", "min_conf": "medium"},
+  {"text": "No targets found in Makefile.", "min_conf": "medium"}
+ ],
+ "must_not": ["presets_cache_v2"]
+}

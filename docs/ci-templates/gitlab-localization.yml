@@ -1,0 +1,17 @@
+# Localization check for merge requests (ADR-52).
+#
+# Reports the work manifest; it never translates (translation is a taskqueue job, ADR-1).
+# Include from .gitlab-ci.yml or copy the job. The job fails when strings were added or
+# changed, so set allow_failure: true if you only want the report.
+localization-check:
+  image: python:3.12
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - pip install llm_localizator
+  script:
+    - llm-localizator run-sync --diff --exit-nonzero --no-translate | tee diff.txt
+  artifacts:
+    when: always
+    paths:
+      - diff.txt

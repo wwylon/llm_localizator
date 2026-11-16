@@ -1,0 +1,7 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Install the package and run the first command.", "min_conf": "medium"}
+ ],
+ "must_not": ["slug: \"getting-started-internal-id\",", "layout: \"docs-wide-layout\",", "}"]
+}

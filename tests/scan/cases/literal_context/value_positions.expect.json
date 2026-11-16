@@ -1,0 +1,4 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Next hand"}, {"text": "Confirm fold"}, {"text": "Fold"},
+              {"text": "Waiting for opponent"}, {"text": "Human vs bot", "min_conf": "high"}],
+ "must_not": ["NextHand", "hvb"]}

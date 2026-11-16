@@ -1,0 +1,68 @@
+{
+  "pl": [
+    [
+      "{done} done · {stale} stale · {missing} missing",
+      "{done} gotowe · {stale} nieaktualne · {missing} brakujące"
+    ],
+    [
+      "Model (leave blank to use project default)",
+      "Model (puste = domyślny projektu)"
+    ],
+    [
+      "untranslated",
+      "bez tłumaczenia"
+    ],
+    [
+      "marked as intentionally kept",
+      "oznaczono jako celowo zachowane"
+    ],
+    [
+      "+ Locale",
+      "+ Język"
+    ]
+  ],
+  "de": [
+    [
+      "search key or text…",
+      "Schlüssel oder Text suchen…"
+    ],
+    [
+      "{done} done · {stale} stale · {missing} missing",
+      "{done} fertig · {stale} veraltet · {missing} fehlend"
+    ],
+    [
+      "Model (leave blank to use project default)",
+      "Modell (leer lassen für Projektstandard)"
+    ],
+    [
+      "untranslated",
+      "unübersetzt"
+    ],
+    [
+      "marked as intentionally kept",
+      "als absichtlich beibehalten markiert"
+    ]
+  ],
+  "ar": [
+    [
+      "search key or text…",
+      "ابحث عن المفتاح أو النص…"
+    ],
+    [
+      "{done} done · {stale} stale · {missing} missing",
+      "{done} مكتمل · {stale} قديم · {missing} مفقود"
+    ],
+    [
+      "Model (leave blank to use project default)",
+      "النموذج (اتركه فارغًا لاستخدام افتراضي المشروع)"
+    ],
+    [
+      "untranslated",
+      "غير مترجم"
+    ],
+    [
+      "marked as intentionally kept",
+      "تم وضع علامة عليه كمحفوظ عن قصد"
+    ]
+  ]
+}

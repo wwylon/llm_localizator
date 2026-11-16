@@ -1,0 +1,7 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Please choose a file to open", "min_conf": "low"}
+ ],
+ "must_not": [" || c == ", ") {\n\t\treturn true\n\t}\n\treturn false\n}\n\nfunc main() {\n\tfmt.Println("]
+}

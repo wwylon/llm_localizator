@@ -1,0 +1,23 @@
+{
+  "doNotTranslate": [],
+  "terms": {
+    "queue": {
+      "pl": "kolejka",
+      "pl_forbidden": ["zaszyfruj", "szyfr", "zaszyfrow"],
+      "de": "Warteschlange",
+      "ar": "قائمة الانتظار",
+      "ar_forbidden": ["تأهيل"]
+    },
+    "untranslated": {
+      "pl": "bez tłumaczenia",
+      "pl_forbidden": ["nietranslateowane", "nietłumaczone", "translateowane"],
+      "de": "unübersetzt",
+      "ar": "غير مترجم"
+    },
+    "intentionally kept": {
+      "pl": "celowo zachowane",
+      "de": "absichtlich beibehalten",
+      "ar": "محفوظ عن قصد"
+    }
+  }
+}

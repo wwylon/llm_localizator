@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Account settings", "min_conf": "medium"},
+              {"text": "Welcome back to your account", "min_conf": "medium"},
+              {"text": "Save", "min_conf": "medium"},
+              {"text": "Save your changes now", "min_conf": "medium"},
+              {"text": "Search by name", "min_conf": "medium"}],
+ "must_not": ["cancelButton", "UserName", "Strings.Cancel", "SaveCommand", "http://schemas.microsoft.com"]}

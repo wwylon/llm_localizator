@@ -1,0 +1,1 @@
+Remember to rotate the signing keys before the release.

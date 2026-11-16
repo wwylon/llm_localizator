@@ -1,0 +1,8 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Oops", "min_conf": "medium"},
+   {"text": "Tente Novamente", "min_conf": "medium"},
+   {"text": "Este campo tem limite máximo de", "min_conf": "medium"},
+   {"text": "Coleções", "min_conf": "medium"}
+ ],
+ "must_not": ["package:memo/domain/enums/resource_type.dart", "/collections", "memo_collections_v2"]}

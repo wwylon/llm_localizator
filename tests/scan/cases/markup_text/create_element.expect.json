@@ -1,0 +1,4 @@
+{"adapter": "raw-js",
+ "must_hit": [{"text": "Threads"}, {"text": "Drop files here to start the analysis.", "min_conf": "high"},
+              {"text": "Dead Functions", "min_conf": "high"}, {"text": "View Source"}],
+ "must_not": ["div", "unused-summary-label", "button", "Not text"]}

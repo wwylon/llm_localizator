@@ -1,0 +1,21 @@
+# Lane A: runs on code PRs. Lane B (bot branch) is opened by `llm-localizator open-pr`.
+name: l10n
+on:
+  pull_request:
+jobs:
+  extraction:
+    if: ${{ !startsWith(github.head_ref, 'l10n/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install llm_localizator
+      - run: llm-localizator scan --strict --lint-directives
+      - run: llm-localizator check
+  translation:
+    if: ${{ startsWith(github.head_ref, 'l10n/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install llm_localizator
+      - run: llm-localizator validate --strict
+      - run: llm-localizator check

@@ -1,0 +1,32 @@
+name: Scanner false positive / missed string
+description: agent-hardcoded reported something that is not UI text, or missed a string that is
+labels: [scanner]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - False positive (reported, but not UI text)
+        - Missed string (UI text, not reported)
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: Code snippet
+      description: The smallest source excerpt that shows it, with the file extension.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: explain
+    attributes:
+      label: explain-scan output
+      description: Output of `llm-localizator explain-scan FILE:LINE` for the line.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `llm-localizator --version` or `llm-localizator doctor --json`.

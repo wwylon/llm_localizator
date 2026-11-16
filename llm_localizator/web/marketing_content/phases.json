@@ -1,0 +1,77 @@
+{
+  "phases": [
+    {
+      "id": "W-01",
+      "title": "Web shell",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-02",
+      "title": "Dashboard and editor",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-03",
+      "title": "Translation memory",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-04",
+      "title": "Glossary and source quality",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-05",
+      "title": "Operator console",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-06",
+      "title": "Review queue",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-07",
+      "title": "Project config and model eval",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-08",
+      "title": "Auth and roles",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-09",
+      "title": "Delivery API",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-10",
+      "title": "Workflow and branches",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-11",
+      "title": "Marketing and UI locale",
+      "status": "done",
+      "done": "yes"
+    },
+    {
+      "id": "W-12",
+      "title": "Ops hardening",
+      "status": "done",
+      "done": "yes"
+    }
+  ],
+  "install": "pip install llm_localizator"
+}

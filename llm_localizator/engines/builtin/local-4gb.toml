@@ -1,0 +1,23 @@
+id = "local-4gb"
+name = "Local Ollama, 4 GB GPU (translategemma:4b)"
+summary = "Free and private on a small card. translategemma:4b (about 3.3 GiB) for every role; Winner for ar/fr/th/vi in 2026-08-30."
+status = "benchmarked"
+evidence = "experiments/quality_bakeoff/REPORT.md Winners 2026-08-30 for ar, fr, th, vi only (re-bakeoff due)"
+
+[requires]
+cloud = false
+vram_gib = 4
+
+[config.provider]
+kind = "ollama"
+
+[config.locales.models]
+default = "translategemma:4b"
+
+[config.quality]
+improve_model = "translategemma:4b"
+score_model = "translategemma:4b"
+threshold = 0.55
+
+[config.translate]
+batch_size = 5

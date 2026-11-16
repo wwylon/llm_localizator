@@ -1,0 +1,10 @@
+{
+  "tactics": {
+    "claim": "Zaakceptuj",
+    "concede": "Poddaj"
+  },
+  "tricks": "{n, plural, one {# lewa} few {# lewy} many {# lew} other {# lewy}}",
+  "watching": "{n, plural, =0 {Nikt nie oglada} one {# oglada} few {# obserwuje} many {# obserwuje} other {# obserwuje}}",
+  "convention": "Uzyj Stayman tutaj",
+  "removedKey": "Sierota - nie ma w zrodle"
+}

@@ -1,0 +1,6 @@
+{
+  "brand": "BridgeApp",
+  "home": "Home",
+  "unreadCount": "{n, plural, one {# wiadomosc} few {# wiadomosci} many {# wiadomosci} other {# wiadomosci}}",
+  "profile": "Twoj profil"
+}

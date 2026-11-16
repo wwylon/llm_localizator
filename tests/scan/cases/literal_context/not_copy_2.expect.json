@@ -1,0 +1,5 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Deposits held"}, {"text": "Kaucje"}],
+ "must_not": ["React.ComponentProps", "GiB", "MiB",
+              "You are a financial news editor. Summarize these headlines for the user.",
+              "Pliki zostają na Twoim komputerze", "Files stay on your computer"]}

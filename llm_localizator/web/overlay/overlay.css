@@ -1,0 +1,159 @@
+/* Translator overlay — highlights, tips, modal */
+
+.llm-translator-active.llm-translate-ctrl,
+.llm-translator-active.llm-translate-ctrl * {
+  cursor: crosshair !important;
+}
+
+.llm-translator-active.llm-translate-ctrl .llm-translator-chip {
+  cursor: pointer !important;
+}
+
+/* Suspend text selection while CTRL inspect mode is active */
+body.llm-translator-active.llm-translate-ctrl *:not(.llm-translator-chip):not(.llm-tip):not(.llm-overlay-backdrop):not(.llm-overlay-backdrop *) {
+  user-select: none !important;
+}
+
+.llm-highlight {
+  outline: 2px solid #6c97ff !important;
+  outline-offset: 2px;
+  background: rgba(108, 151, 255, 0.12) !important;
+}
+
+.llm-tip {
+  position: fixed;
+  max-width: 320px;
+  padding: 8px 10px;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: #fff;
+  background: rgba(20, 28, 40, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.llm-tip-key {
+  display: block;
+  font-size: 10px;
+  opacity: 0.65;
+  font-family: ui-monospace, monospace;
+  margin-bottom: 4px;
+}
+
+.llm-tip-text {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.llm-translator-chip {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 9997;
+  padding: 8px 14px;
+  font: 13px system-ui, sans-serif;
+  border-radius: 20px;
+  border: 1px solid #6c97ff;
+  background: #16203a;
+  color: #ccd5e8;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.llm-translator-chip.on {
+  background: #6c97ff;
+  color: #fff;
+}
+
+.llm-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.llm-overlay-modal {
+  width: min(480px, 100%);
+  background: #141b26;
+  color: #ccd5e8;
+  border: 1px solid #232c3b;
+  border-radius: 10px;
+  padding: 18px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  font: 13.5px/1.5 system-ui, sans-serif;
+}
+
+.llm-overlay-modal h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+}
+
+.llm-overlay-modal label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8794ae;
+  margin: 10px 0 4px;
+}
+
+.llm-overlay-modal .llm-readonly {
+  padding: 6px 8px;
+  background: #0c1017;
+  border-radius: 6px;
+  border: 1px solid #232c3b;
+}
+
+.llm-overlay-modal textarea {
+  width: 100%;
+  min-height: 72px;
+  font: inherit;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #232c3b;
+  background: #0c1017;
+  color: #ccd5e8;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.llm-overlay-errors {
+  color: #ef7266;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.llm-overlay-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.llm-overlay-actions button {
+  font: inherit;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #232c3b;
+  background: #141b26;
+  color: #ccd5e8;
+  cursor: pointer;
+}
+
+.llm-overlay-actions button.llm-primary {
+  background: #6c97ff;
+  border-color: #6c97ff;
+  color: #fff;
+}
+
+.llm-overlay-actions button:hover {
+  border-color: #6c97ff;
+}

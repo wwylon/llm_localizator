@@ -1,0 +1,10 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Installing the command-line tool", "min_conf": "medium"},
+   {"text": "Download and set up the tool on Windows, macOS and Linux.", "min_conf": "medium"},
+   {"text": "Run the installer for your platform, then restart the desktop client.", "min_conf": "medium"},
+   {"text": "Open PowerShell and paste the command below.", "min_conf": "medium"},
+   {"text": "Use the shell script from the release page.", "min_conf": "medium"},
+   {"text": "Back up your settings before you upgrade.", "min_conf": "medium"}
+ ],
+ "must_not": ["1.2.0", "../components/Tabs", "curl -fsSL https://example.com/install.sh | sh", "Tabs", "Tab"]}

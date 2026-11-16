@@ -1,0 +1,9 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Score:", "min_conf": "medium"},
+  {"text": "Settings Menu", "min_conf": "medium"},
+  {"text": "Rename file", "min_conf": "medium"}
+ ],
+ "must_not": ["SettingsPanel"]
+}

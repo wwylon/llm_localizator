@@ -1,0 +1,30 @@
+!!! 5
+-# A developer comment that is never shown
+  nested comment line
+- notifiable = local_assigns.fetch(:notifiable)
+%section
+  %h2
+    Notify via email
+  = form_with model: notifiable do |form|
+    - if notifiable.errors.any?
+      .error
+        Oops, an error occurred:
+        %span.message= notifiable.errors.full_messages.join(", ")
+    .mb-3.col-md-6
+      = form.label :email, "Enter your email address to receive a notification.", class: "form-label"
+      = form.email_field :email, class: "form-control", placeholder: "you@example.com"
+      %small.form-text Will only be used for one notification.
+    %table
+      %tr
+        %th{ rowspan: 2 }
+          Gem
+        %th= link_to "Show earlier Rails versions", "#", class: "float-end"
+    %input{ type: "search", placeholder: "Search gems" }
+    %a(href="/about" title="About this site") About
+    %p Signed in as #{current_user.name}
+    %p= t(".already_translated")
+    = form.submit "Notify me", class: "btn btn-primary", data: { disable_with: t(:please_wait) }
+:javascript
+  console.log("never shown text here");
+%p
+  == Please #{link_to "become a sponsor", "https://example.com/sponsors"} today.

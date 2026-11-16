@@ -1,0 +1,17 @@
+<ui version="4.0">
+ <widget class="QDialog" name="Dialog">
+  <property name="windowTitle">
+   <string>Connection settings</string>
+  </property>
+  <widget class="QLabel" name="label">
+   <property name="text">
+    <string>Enter the server address</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="host">
+   <property name="objectName">
+    <string>hostEdit</string>
+   </property>
+  </widget>
+ </widget>
+</ui>

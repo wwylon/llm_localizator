@@ -1,0 +1,9 @@
+{
+  "tactics": {
+    "claim": "Claim",
+    "concede": "Concede"
+  },
+  "tricks": "{n, plural, one {# trick} other {# tricks}}",
+  "watching": "{n, plural, =0 {No one watching} one {# watching} other {# watching}}",
+  "convention": "Use Stayman here"
+}

@@ -1,0 +1,13 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Hi moderator!", "min_conf": "medium"},
+  {"text": "Please take a look at the reports page for more information.", "min_conf": "medium"},
+  {"text": "Access to the requested resource has been denied", "min_conf": "medium"},
+  {"text": "You cannot rate your own review.", "min_conf": "medium"},
+  {"text": "You have exceeded your limit of votes per day.", "min_conf": "medium"},
+  {"text": "Reported by: {x}", "min_conf": "medium"}
+ ],
+ "must_not": ["Remember to rotate the signing keys before the release.", "own", "access_denied", "rescheduled.", "Dear {x},",
+              "host: {x}"]
+}

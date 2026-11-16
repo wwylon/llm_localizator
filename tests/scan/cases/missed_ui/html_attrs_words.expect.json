@@ -1,0 +1,7 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Close", "min_conf": "medium"},
+              {"text": "Previous", "min_conf": "medium"},
+              {"text": "Next", "min_conf": "medium"},
+              {"text": "Download", "min_conf": "medium"},
+              {"text": "(current)", "min_conf": "medium"}],
+ "must_not": ["page-item", "pagination"]}

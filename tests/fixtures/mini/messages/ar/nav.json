@@ -1,0 +1,6 @@
+{
+  "brand": "BridgeApp",
+  "home": "الرئيسية",
+  "unreadCount": "{n, plural, zero {لا رسائل} one {رسالة} two {رسالتان} few {# رسائل} many {# رسالة} other {# رسالة}}",
+  "profile": "ملفك الشخصي"
+}

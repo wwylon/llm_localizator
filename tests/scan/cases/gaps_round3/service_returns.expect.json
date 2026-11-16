@@ -1,0 +1,5 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Invalid API token provided", "min_conf": "medium"},
+              {"text": "Could not reach the server right now", "min_conf": "medium"},
+              {"text": "the date is missing or invalid", "min_conf": "medium"},
+              {"text": "Import finished with errors", "min_conf": "medium"}]}

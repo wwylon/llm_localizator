@@ -1,0 +1,24 @@
+id = "openai"
+name = "OpenAI GPT-5.6 Luna (cloud, every role)"
+summary = "No GPU. Not benchmarked on this pipeline yet."
+status = "unbenchmarked"
+evidence = ""
+
+[requires]
+cloud = true
+api_key_env = "OPENAI_API_KEY"
+vram_gib = 0
+
+[config.provider]
+kind = "openai"
+
+[config.locales.models]
+default = "gpt-5.6-luna"
+
+[config.quality]
+improve_model = "gpt-5.6-luna"
+score_model = "gpt-5.6-luna"
+score_provider = "openai"
+
+[config.translate]
+cloud_batch_size = 50

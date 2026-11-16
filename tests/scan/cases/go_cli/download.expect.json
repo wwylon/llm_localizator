@@ -1,0 +1,11 @@
+{"adapter": "source",
+ "must_hit": [
+   {"text": "Download an exercise.", "min_conf": "medium"},
+   {"text": "You may download an exercise to work on.", "min_conf": "medium"},
+   {"text": "the solution UUID", "min_conf": "medium"},
+   {"text": "overwrite existing exercise directory", "min_conf": "medium"},
+   {"text": "the track to download from", "min_conf": "medium"},
+   {"text": "fight the loneliness!", "min_conf": "medium"},
+   {"text": "language for the greeting", "min_conf": "medium"}
+ ],
+ "must_not": ["download", "uuid", "u", "force", "F", "track", "greet", "lang", "english", "d"]}

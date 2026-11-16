@@ -1,0 +1,3 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Choose your answer below", "min_conf": "medium"}],
+ "must_not": ["Welcome Back to the quiz", "{x} {x}", "{x}", "words.kick", "words.answer"]}

@@ -1,0 +1,4 @@
+{"adapter": "source",
+ "must_hit": [{"text": "Connection settings", "min_conf": "medium"},
+              {"text": "Enter the server address", "min_conf": "medium"}],
+ "must_not": ["hostEdit", "QDialog"]}

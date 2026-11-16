@@ -1,0 +1,61 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {
+   "text": ":BACK",
+   "min_conf": "medium"
+  },
+  {
+   "text": ":SIGN IN",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Approved",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Waiting",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Connecting",
+   "min_conf": "medium"
+  },
+  {
+   "text": "TUNING",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Email:",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Username:",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Shuffled",
+   "min_conf": "medium"
+  },
+  {
+   "text": "(Collection)",
+   "min_conf": "medium"
+  },
+  {
+   "text": "Not connected yet",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "Already routed",
+  "images/icon.png",
+  "ON",
+  "collection_items",
+  "x",
+  "CHANGE",
+  "Connected to the private route",
+  "change",
+  "status.on",
+  "dddd"
+ ]
+}

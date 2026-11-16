@@ -1,0 +1,9 @@
+{
+  "tactics": {
+    "claim": "طالب",
+    "concede": "استسلم"
+  },
+  "tricks": "{n, plural, zero {# خدعة} one {خدعة واحدة} two {خدعتان} few {# خدع} many {# خدعة} other {# خدعة}}",
+  "watching": "{n, plural, =0 {لا أحد يشاهد} one {# يشاهد} two {# يشاهدان} few {# يشاهدون} many {# يشاهدون} other {# يشاهد}}",
+  "convention": "استخدم Stayman هنا"
+}

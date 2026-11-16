@@ -1,0 +1,8 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {"text": "Chat in your conversation in this channel", "min_conf": "medium"},
+  {"text": "Provide a message to send.", "min_conf": "medium"}
+ ],
+ "must_not": ["value must not be None"]
+}

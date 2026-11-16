@@ -1,0 +1,18 @@
+{
+ "adapter": "source",
+ "must_hit": [
+  {
+   "text": "插件配置",
+   "min_conf": "medium"
+  },
+  {
+   "text": "保存成功",
+   "min_conf": "medium"
+  }
+ ],
+ "must_not": [
+  "Something went wrong here",
+  "été",
+  "x1"
+ ]
+}
