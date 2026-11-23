@@ -40,9 +40,9 @@ FORMAT_BLURBS: dict[str, str] = {
 
 # Held-out scanner benchmark (docs/scanners.md, "Held-out by storage pattern").
 BENCH_STATS = (
-    ("0.91", "mkt_bench_precision"),
-    ("12", "mkt_bench_projects"),
-    ("0.34", "mkt_bench_recall"),
+    ("0.74", "mkt_bench_precision"),
+    ("136", "mkt_bench_projects"),
+    ("0.59", "mkt_bench_recall"),
 )
 
 

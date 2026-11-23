@@ -135,7 +135,9 @@ def op_engine(
     accept_unbenchmarked: bool = False, vram: float | None = None, gpu_busy: bool = False,
     url: str | None = None, write: bool = False, accept_unverified: bool = False,
 ) -> OpResult:
-    """``list`` | ``show`` | ``recommend`` | ``apply`` | ``fetch``."""
+    """``list`` | ``show`` | ``recommend`` | ``apply`` (alias ``use``) | ``fetch``."""
+    if action == "use":
+        action = "apply"
     if action == "fetch":
         return _fetch(url, write=write, accept_unverified=accept_unverified)
     keys = keys_present()

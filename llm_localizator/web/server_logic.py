@@ -156,6 +156,8 @@ def _session_author(actor, claimed) -> str:
 
 
 from .request_guard import (  # noqa: F401  (re-exported)
+    SECURITY_HEADERS,
+    max_body_bytes,
     _cors_origin,
     _host_allowed,
     _install_session_token,
@@ -178,6 +180,7 @@ _SHELL_STATIC = {
     "/static/ui-locale.js": ("ui-locale.js", "application/javascript; charset=utf-8"),
     "/static/api.js": ("api.js", "application/javascript; charset=utf-8"),
     "/static/request-health.js": ("request-health.js", "application/javascript; charset=utf-8"),
+    "/static/a11y.js": ("a11y.js", "application/javascript; charset=utf-8"),
     "/static/appearance.js": ("appearance.js", "application/javascript; charset=utf-8"),
     "/static/dashboard.js": ("dashboard.js", "application/javascript; charset=utf-8"),
     "/static/placeholders.js": ("placeholders.js", "application/javascript; charset=utf-8"),

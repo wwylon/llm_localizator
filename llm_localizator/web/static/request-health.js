@@ -314,8 +314,8 @@
     head.appendChild(title);
     var summary = document.createElement("span");
     summary.textContent =
-      "pending " + c.pending + " · stalled " + c.stalled + " · failed " + c.failed +
-      " · sorted by client ↓";
+      uiT("rh_pending", "pending") + " " + c.pending + " · " + uiT("rh_stalled", "stalled") + " " + c.stalled +
+      " · " + uiT("rh_failed", "failed") + " " + c.failed + " · " + uiT("rh_sorted_client", "sorted by client ↓");
     head.appendChild(summary);
     function linkBtn(id, label, onClick) {
       var btn = document.createElement("button");

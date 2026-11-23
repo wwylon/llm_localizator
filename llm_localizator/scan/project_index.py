@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from .apple_index import CATALOGUE_SKIP_DIRS, DEFAULT_TABLES, read_pbxproj, strings_keys
@@ -24,6 +25,10 @@ GO_TUI_LIBS = ("github.com/charmbracelet/bubbletea", "github.com/rivo/tview", "g
                "github.com/jroimartin/gocui", "github.com/awesome-gocui/gocui", "github.com/gdamore/tcell")
 
 _ATTR = "_project_index"
+_PY_GUI_DEP = re.compile(r"(?im)^\s*[\"']?(?:PyQt[4-6]|PySide[2-6]|wxPython|customtkinter|ttkbootstrap|kivy|toga|flet)\b")
+_PY_GUI_IMPORT = re.compile(
+    r"^\s*(?:import|from)\s+(?:tkinter|Tkinter|customtkinter|PyQt[4-6]|PySide[2-6]|wx|kivy|toga|flet|qt|slicer|ctk)\b", re.M,
+)
 
 
 class ProjectIndex:
@@ -32,11 +37,51 @@ class ProjectIndex:
     def __init__(self, root) -> None:
         self.root = Path(root) if root else None
         self._go: tuple[bool, bool] | None = None
+        self._py_gui: bool | None = None
         self._walked = False
         self._apple_keys: frozenset[str] = frozenset()
         self._apple_sources: dict[str, set[str]] = {}
         self._apple_targets: set[str] = set()
         self._info_plists: list[Path] = []
+
+    # ------------------------------------------------------------ Python desktop GUI
+    @property
+    def py_gui(self) -> bool:
+        """The project is a Python desktop GUI app: it depends on, or its top modules import, Tk, Qt, wx, Kivy or Toga.
+
+        Exception messages and label tables are screen copy there (a worker thread's error ends up in a dialog).
+        """
+        if self._py_gui is None:
+            self._py_gui = self._detect_py_gui()
+        return self._py_gui
+
+    def _detect_py_gui(self) -> bool:
+        if not self.root or not self.root.is_dir():
+            return False
+        for name in ("requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", "Pipfile", "environment.yml"):
+            try:
+                text = (self.root / name).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if _PY_GUI_DEP.search(text):
+                return True
+        # Three shallow listings, not a second tree walk: the scan walks the tree once.
+        seen = 0
+        for pattern in ("*.py", "*/*.py", "*/*/*.py"):
+            for path in self.root.glob(pattern):
+                if any(part in CATALOGUE_SKIP_DIRS or part.startswith(".") for part in path.relative_to(self.root).parts[:-1]):
+                    continue
+                seen += 1
+                if seen > 300:
+                    return False
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as fh:
+                        head = fh.read(6000)
+                except OSError:
+                    continue
+                if _PY_GUI_IMPORT.search(head):
+                    return True
+        return False
 
     # ------------------------------------------------------------ Go
     def _read_go(self) -> tuple[bool, bool]:

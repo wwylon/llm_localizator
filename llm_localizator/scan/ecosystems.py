@@ -17,6 +17,19 @@ _SINKS: dict[str, re.Pattern[str]] = {
     "java": re.compile(
         r"JOptionPane\.\w+\(|\.set(?:Text|Title|ToolTipText|Message|Label|ContentText|HeaderText)\(|Toast\.makeText\(|"
         r"new\s+(?:JLabel|JButton|JMenuItem|JMenu|Label|Button|MenuItem|Alert|Tooltip)\(|Snackbar\.make\(|"
+        # Swing, JavaFX and Vaadin: any widget class named for what it shows (``new ModernButton("Create")``), and the
+        # setters that give a field its placeholder, header or helper text.
+        r"new\s+\w*(?:Label|Button|MenuItem|CheckBox|Checkbox|RadioButton|TextField|Tab|Span|Paragraph|Notification)\(|"
+        r"\.set(?:Placeholder|PromptText|Header|HelperText|ErrorMessage|Caption|HelpText|ButtonText|DialogTitle)\(|Notification\.show\(|"
+        # Status and error helpers named for what they show, file-chooser filters and titled borders (first argument).
+        r"\b(?:update|show|set)(?:Status|StatusText|Error|ErrorDialog|Warning|Info|Message|Notification)\(|\bsendError\(|"
+        # A project's own output-pane helpers (``appendProgress("Building…")``) and alert/dialog helpers.
+        r"\bappend(?:Progress|Output|Console|Status|Message|Result)s?\(|\bshow(?:Alert|Dialog|Confirm|Toast|Popup|Prompt)\w*\(|"
+        r"new\s+[\w.]*(?:ExtensionFilter|FileFilter)\(|new\s+\w*(?:Titled|Labeled)Border\(|createTitledBorder\(|"
+        # An enum constant with a display name (``NONE("None", "Don't compress"),``), widget-factory helpers
+        # (``getDirectorySelectWidget(dir, "Choose folder")``) and progress-monitor task names.
+        r"^\s*[A-Z][A-Z0-9_]+\(|\b(?:get|make|create|build)\w+(?:Widget|Container|Header)\(|"
+        r"\b(?:beginTask|subTask)\(|\bmonitor\.begin\(|"
         r"\.(?:addMessage|addFlashAttribute|rejectValue)\(|"
         r"\.set(?:ContentTitle|ContentText|ContentInfo|SubText|Ticker|BigText)\(|new\s+NotificationChannel\("
     ),
@@ -51,6 +64,8 @@ _SINKS: dict[str, re.Pattern[str]] = {
         r"\b(?:hintText|labelText|helperText|errorText|title|tooltip|content|label|semanticLabel|text|message|description|subtitle)\s*:|"
         # Pool D: notification/status named args, and switch arms that map an enum or id to its label.
         r"\b(?:body|detail|headline|caption|barrierLabel|emptyText)\s*:|^\s*(?:\w+\.\w+|'[\w-]+')\s*=>\s*|"
+        # A text constant named for what it is: ``static const String agenda_text = "Agenda"``.
+        r"\b(?:static\s+)?(?:const|final)\s+(?:String\s+)?\w*(?:_text|Text|_title|Title|_label|Label)\s*=\s*|"
         r"\bGButton\(|\bthrow\s+(?:Exception\()?"
     ),
     "go": re.compile(

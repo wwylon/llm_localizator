@@ -234,10 +234,57 @@ Read source code for `t()` call sites and hardcoded user-visible strings.
 | `--out-dir PATH` | Where usage artefacts go |
 | `--no-write` | Report only |
 | `--format text\|github\|json` | |
-| `--strict` | Exit 1 if any hardcoded string is found. Never calls a model. |
+| `--strict` | Exit 1 if any hardcoded string is found in a surface that is to be fixed. Never calls a model. |
+| `--surface a,b` | Only these `[scan.surfaces]` names (`other` is the part no surface matches) |
+
+The text report prints counts by confidence (and by surface), lists the first 100 findings, and
+says when it cut the list; `--format json` has all of them.
+
+**Surfaces.** Name the parts of a project and decide what to do with each:
+
+```toml
+[scan.surfaces.web]
+paths = ["tqdaemon/web", "static/**/*.js"]
+mode = "fix"        # counted, fails --strict (default)
+
+[scan.surfaces.cli]
+paths = ["tqdaemon/cli.py"]
+mode = "report"     # listed, never fails --strict
+
+[scan.surfaces.tests]
+paths = ["tests/"]
+mode = "ignore"     # dropped, only counted
+```
+
+`paths` are globs or directory prefixes; the first surface that matches a file wins. A finding that
+matches none belongs to `other` and behaves as `fix`, so a project without surfaces works as before.
 
 The paste-ready report for an agent is `agent-hardcoded`, not `scan`. `scan`
 still writes usage artefacts. See [adding_localization.md](adding_localization.md) §4.
+
+---
+
+## `localize-project`
+
+The localization checklist as one report. Read-only unless you pass `--submit`.
+
+```
+llm-localizator localize-project --locales pl,de
+llm-localizator localize-project --locales pl,de --submit
+```
+
+It prints (1) the scan summary, (2) per locale the keys that are absent or empty, and how many existing
+translations have no state record, (3) the cost estimate, and (4) the next commands. `--submit` enqueues one
+`translate --only-missing` job for those locales through the normal path, so the cloud gate and the budget
+cap still apply. It never changes an existing translation. Frozen locales are left out unless you name them
+with `--locales`. After the job ends, run `validate` and compare with the errors that existed before.
+
+| Flag | Purpose |
+|------|---------|
+| `--locales a,b` | Locales to check (default: targets that are not frozen) |
+| `--submit` | Also enqueue the translate job (and record the validation baseline) |
+| `--baseline` | Record today's validation errors; later runs report new, unchanged and fixed ones |
+| `--format text\|json` | |
 
 ---
 
@@ -264,6 +311,13 @@ network. Remote status does.
 |------|---------|
 | `--format text\|json` | Output format |
 | `--missing` | List each missing/stale key instead of summary counts |
+
+`status` counts a key whose target has text that differs from the source but no state record apart from
+`missing` ("have text but no record"). The text is there; run `adopt` to record it. Coverage counts only
+keys with a record.
+
+| Flag | Purpose |
+|------|---------|
 | `--by-screen` | Group coverage by the `screen` in each key's context note (least complete first) |
 | `--collection NAME` | Default `messages`. A file collection lists path, coverage, and stale. A remote collection lists each unit's source language and what is missing, stale, machine, or human. See [content-api.md](content-api.md) |
 
@@ -586,10 +640,19 @@ what the blueprint invokes — see [taskqueue-integration.md](taskqueue-integrat
 | `--batch-size N` | Keys per request (default 10) |
 | `--force` | Retranslate keys that are already up to date |
 | `--flagged` | Only keys flagged through the dev overlay |
+| `--sync` | Cloud: one synchronous request per batch instead of Message Batches. Full price, no wait; use for small or urgent runs |
+| `--only-missing` | Only keys whose target value is absent or empty. Existing translations are never touched |
+| `--keys-file PATH` | Explicit keys read from a file (one per line or comma-separated, `#` comments ignored, `-` reads stdin); merged with `--keys`. Use it instead of a very long `--keys` |
 | `--tag TAG` | Only keys whose context note carries this tag; repeat or comma-separate for several (any match). Tags are set in the editor's key panel or as `"tags": ["checkout"]` in the context file, and never make a translation stale ([ADR-75](decisions/ADR-75-tag-runs.md)) |
 | `--dry-run` | Print the work list; call nothing, write nothing |
 | `--pre-translate` | Write the translation with history `trigger=pre-translate`. No score row and no low-score flag. Not a new status |
 | `--ignore-min-keys` | Bypass `[translate] min_keys` (operator runs; `translate` submit always sets this). Automated sync→translate omits it. |
+
+**Existing translations without a record.** A target value that differs from the
+source and has no state record (the project had catalogues before it used this
+tool) counts as an existing translation, not a gap. A plain run leaves it as is
+and says so (`left as is: pl 612 ...`). `llm-localizator adopt` records such
+values; `--force`, or naming the key with `--keys`, retranslates them.
 
 `--dry-run` is the safest way to confirm the tool is looking at the files you
 expect. It is also the golden-fidelity gate: a dry run must leave every file
@@ -1098,12 +1161,12 @@ llm-localizator engine fetch --from https://example.org/engines/ --write --accep
 An engine sets the provider and model of every role (translate, BT score, judge, improve) in one switch (ADR-156).
 `list` shows the built-in engines with their evidence status (`benchmarked`, `waiver`, `smoke`, `unbenchmarked`) and
 whether this machine can run them (API key present, GPU size from `nvidia-smi` or `--vram`). `recommend` picks the
-best fit; `--gpu-busy` skips engines that need the GPU. `apply ID` writes `[engine] id` and removes the project keys
+best fit; `--gpu-busy` skips engines that need the GPU. `apply ID` (alias `use ID`) writes `[engine] id` and removes the project keys
 that would hide the engine; per-locale overrides stay. Cloud engines never turn cloud on: the command prints the
 `[privacy]` / `[budget]` lines to add yourself.
 
 `fetch` downloads engine files from the project site (`--from URL` for another host; default
-`https://llm-localizator.dev/engines/`). It is a dry run until `--write`: each file is fetched without following
+`https://wwylon.github.io/llm_localizator/engines/`). It is a dry run until `--write`: each file is fetched without following
 redirects, capped at 64 KB, hash-checked against `index.json`, and refused if it sets anything an engine may not
 (privacy, budget, URLs, keys). A file whose hash this release ships is `verified`; anything newer is `UNVERIFIED`
 and is saved only with `--accept-unverified`, after you have read it. Fetched engines live in

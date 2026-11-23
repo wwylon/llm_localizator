@@ -176,9 +176,16 @@ def run_sync(
         result.escalated = escalate_overdue(cfg, targets, report)
 
     # ---- translation backlog -----------------------------------------------
+    unrecorded: list = []
     work = collect_work(
         cfg, catalog, state, locales=targets, namespaces=ns_list, force=False,
+        unrecorded=unrecorded,
     )
+    if unrecorded:
+        report(
+            f"note: {len(unrecorded)} existing translation(s) have no state record and are left as is "
+            "(`adopt` records them; `translate --force` or --keys retranslates)"
+        )
     result.missing_or_stale = len(work)
     if not dry_run:
         record_source_changes(cfg, work, state)

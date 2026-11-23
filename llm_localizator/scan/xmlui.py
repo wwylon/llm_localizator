@@ -37,8 +37,16 @@ _ENTITY = re.compile(r"&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);")
 def is_xmlui_path(path: Path) -> bool:
     low = "/" + path.as_posix().lower()
     if path.suffix.lower() == ".xml":
-        return any(d in low for d in _ANDROID_DIRS)
+        return _is_appstream(path) or any(d in low for d in _ANDROID_DIRS)
     return path.suffix.lower() in {".xaml", ".ui", ".storyboard", ".xib", ".fxml"}
+
+
+#: AppStream metadata (``org.example.App.metainfo.xml``, ``*.appdata.xml``): the text a software centre shows.
+_APPSTREAM_TEXT = frozenset({"summary", "name", "p", "li", "caption", "developer_name"})
+
+
+def _is_appstream(path: Path) -> bool:
+    return path.name.lower().endswith((".metainfo.xml", ".appdata.xml"))
 
 
 def _clean(value: str) -> str:
@@ -74,6 +82,10 @@ def scan_xmlui_file(scanner, path: Path, lines: list[str], result: ScanResult) -
             m = _QT_STRING.search(text, prop.end(), prop.end() + 300)
             if m:
                 _add(result, rel, text.count("\n", 0, m.start()) + 1, _clean(m.group(1)), "Qt Designer text property")
+    elif _is_appstream(path):
+        for m in _ELEMENT_TEXT.finditer(text):
+            if m.group(1).lower() in _APPSTREAM_TEXT:
+                _add(result, rel, text.count("\n", 0, m.start(2)) + 1, _clean(m.group(2)), "AppStream store text")
     elif path.suffix.lower() in {".xaml"}:
         for m in _ELEMENT_TEXT.finditer(text):
             if _VALUE_ELEMENTS.search(m.group(1)):

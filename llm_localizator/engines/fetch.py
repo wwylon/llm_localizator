@@ -24,7 +24,8 @@ from . import _BUILTIN, EngineError, parse_engine, user_engine_dir
 
 __all__ = ["DEFAULT_URL", "MAX_BYTES", "FetchRow", "build_index", "fetch_engines", "shipped_hashes"]
 
-DEFAULT_URL = "https://llm-localizator.dev/engines/"
+# Project Pages until the custom domain DNS is live (see publish / discoverability).
+DEFAULT_URL = "https://wwylon.github.io/llm_localizator/engines/"
 MAX_BYTES = 64 * 1024
 
 

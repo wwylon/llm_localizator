@@ -611,6 +611,15 @@ class PostRoutesMixin:
                     ) if key in body
                 },
             )
+        return self._reload_after_save(st, project, result)
+
+    def _reload_after_save(self, st, project, result):
+        """After a config save: reload the project's state from disk, then answer with the save result.
+
+        A reload failure (a stale server missing newly allowed fields, a TOML the loader rejects) is reported as 400.
+        """
+        from ..projects.config import load_config
+
         if result.get("ok") and st.cfg.config_path is not None:
             try:
                 store_state(self.states, project, build_state(load_config(st.cfg.config_path)), self.default_project)
@@ -630,12 +639,7 @@ class PostRoutesMixin:
                 st.cfg, workflows=workflows,
                 notify_webhook=str(body.get("notifyWebhook") or ""),
             )
-        if result.get("ok") and st.cfg.config_path is not None:
-            try:
-                store_state(self.states, project, build_state(load_config(st.cfg.config_path)), self.default_project)
-            except Exception as exc:
-                return self._send({"ok": False, "error": str(exc)}, 400)
-        return self._send(result, 200 if result.get("ok") else 400)
+        return self._reload_after_save(st, project, result)
 
     def _post_workflow_copy(self, url, body, st, actor, project):
         from ..ops.workflow import get_workflow

@@ -34,7 +34,9 @@ def test_build_provider_anthropic_and_deepl() -> None:
     assert isinstance(build_provider(ProviderConfig(kind="deepl")), DeepLProvider)
 
 
-def test_anthropic_missing_key_raises() -> None:
+def test_anthropic_missing_key_raises(monkeypatch) -> None:
+    for name in ("ANTHROPIC_API_KEY", "LLM_LOCALIZATOR_ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
     p = AnthropicProvider(api_key="")
     with pytest.raises(ProviderError, match="API key"):
         p.complete(CompletionRequest(prompt="hi", model="claude-haiku-4-5"))
@@ -93,7 +95,7 @@ def test_anthropic_sends_system_cache_control(monkeypatch) -> None:
     assert p.last_usage["cache_read_input_tokens"] == 100
 
 
-def test_anthropic_complete_many_message_batches(monkeypatch) -> None:
+def test_anthropic_complete_many_message_batches(monkeypatch, capsys) -> None:
     calls = {"create": 0, "status": 0, "results": 0}
 
     def fake_urlopen_json(req, timeout, kind):
@@ -152,6 +154,9 @@ def test_anthropic_complete_many_message_batches(monkeypatch) -> None:
     ])
     assert out == ['["A"]', '["B"]']
     assert calls["create"] == 1 and calls["status"] >= 1 and calls["results"] == 1
+    err = capsys.readouterr().err
+    assert "submitted" in err and "asynchronously" in err and "ended after" in err
+    assert "test-key" not in err
 
 
 def test_openai_compat_meters_cached_tokens(monkeypatch) -> None:

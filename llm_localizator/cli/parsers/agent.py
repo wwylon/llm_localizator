@@ -386,7 +386,7 @@ def _add_init(sub: argparse._SubParsersAction) -> None:
                     "present, GPU size). show ID: what an engine sets. apply ID: write [engine] id and remove the "
                     "project keys that would hide it; [privacy] and [budget] are never written (ADR-156).",
     )
-    en.add_argument("action", nargs="?", default="list", choices=["list", "show", "recommend", "apply", "fetch"])
+    en.add_argument("action", nargs="?", default="list", choices=["list", "show", "recommend", "apply", "use", "fetch"])
     en.add_argument("engine_id", nargs="?", default=None, help="Engine id for show / apply")
     add_project_args(en)
     en.add_argument("--accept-unbenchmarked", action="store_true",
@@ -394,7 +394,7 @@ def _add_init(sub: argparse._SubParsersAction) -> None:
     en.add_argument("--vram", type=float, default=None, help="GPU memory in GB, when nvidia-smi cannot tell")
     en.add_argument("--gpu-busy", action="store_true", help="Recommend only engines that leave the GPU free")
     en.add_argument("--from", dest="url", default=None,
-                    help="fetch: base URL holding index.json (default https://llm-localizator.dev/engines/)")
+                    help="fetch: base URL holding index.json (default https://wwylon.github.io/llm_localizator/engines/)")
     en.add_argument("--write", action="store_true", help="fetch: save new or updated engines (default: dry run)")
     en.add_argument("--accept-unverified", action="store_true",
                     help="fetch: also save engines this release did not ship (read them first)")

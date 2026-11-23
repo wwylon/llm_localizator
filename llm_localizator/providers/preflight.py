@@ -73,7 +73,7 @@ def check_ollama_model(cfg, model: str) -> str | None:
     return None
 
 
-_CLOUD = frozenset({"anthropic", "openai", "deepseek", "deepl"})
+_CLOUD = frozenset({"anthropic", "openai", "deepseek", "deepl", "openai_compat"})
 _CLOUD_PREFIXES = ("claude-", "gpt-", "deepseek-", "o1", "o3", "o4")
 
 

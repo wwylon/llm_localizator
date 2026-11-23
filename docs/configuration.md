@@ -234,6 +234,71 @@ says otherwise
 org's DPA before enabling. Keys stay in the environment: `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `DEEPL_AUTH_KEY`.
 
+#### Setting an API key
+
+Never put a key in `.llm-localize.toml`, a catalog, or a chat or issue
+comment. The tool reads it only from the environment. Use a key made for this
+tool, with a spending limit set at the provider.
+
+| Where | Command | Lasts |
+|-------|---------|-------|
+| Windows, current PowerShell window | `$env:ANTHROPIC_API_KEY = "sk-ant-..."` | until the window closes |
+| Windows, all future sessions | `setx ANTHROPIC_API_KEY "sk-ant-..."` | permanent; open a new terminal (restart editors and desktop apps) |
+| macOS / Linux, current shell | `export ANTHROPIC_API_KEY="sk-ant-..."` | until the shell closes |
+| macOS / Linux, permanent | add the `export` line to `~/.bashrc` or `~/.zshrc` | new shells |
+
+Check that it is set without printing it:
+
+```powershell
+[bool]$env:ANTHROPIC_API_KEY      # PowerShell: True when set
+```
+
+```bash
+test -n "$ANTHROPIC_API_KEY" && echo set   # bash / zsh
+```
+
+If the tool reports "Anthropic API key missing", the process that launched it
+did not inherit the variable: set it in that same terminal, or restart the app
+that started it. Other providers use the same pattern with their own variable
+name (listed above). For agents: check presence only, never print or log the
+value, and ask the user to set it rather than requesting it in chat.
+
+**Which variable is read.** For each provider the first non-empty one of these
+wins, so this tool can have its own key and spending limit:
+
+1. the variable named by `api_key_env` in the provider table, when you set one;
+2. `LLM_LOCALIZATOR_` plus the vendor name: `LLM_LOCALIZATOR_ANTHROPIC_API_KEY`,
+   `LLM_LOCALIZATOR_OPENAI_API_KEY`, `LLM_LOCALIZATOR_DEEPSEEK_API_KEY`,
+   `LLM_LOCALIZATOR_DEEPL_AUTH_KEY`;
+3. the vendor's own variable (`ANTHROPIC_API_KEY` and so on), as before.
+
+```toml
+[providers.gemini]
+kind = "openai_compat"
+url = "https://generativelanguage.googleapis.com/v1beta/openai"   # base URL; /chat/completions is added
+api_key_env = "GEMINI_API_KEY"        # the NAME of the variable, never the key
+
+[locales.models]
+pl = "gemini-2.5-flash"               # a model the service offers
+
+[locales.providers]
+pl = "gemini"
+
+[budget.rates."gemini-2.5-flash"]     # USD per 1M tokens: required, the tool has no price list for it
+input = 0.30
+output = 2.50
+```
+
+`kind = "openai_compat"` works with any service that offers the OpenAI Chat
+Completions API (Gemini's compatibility endpoint, Mistral, Groq, OpenRouter, a
+self-hosted gateway). It needs the endpoint `url`, a model under
+`[locales.models]` and a price under `[budget.rates]`; without a price the run
+is refused before any request is sent. The endpoint, model name and rates above
+are an example: check them with the provider. If you set no `api_key_env`, the
+variables are `LLM_LOCALIZATOR_OPENAI_COMPAT_API_KEY`, then
+`OPENAI_COMPAT_API_KEY`. Batch discounts apply only to Anthropic and OpenAI;
+`openai_compat` runs one request per batch of keys.
+
 ### `[budget]`
 
 | Field | Default | Notes |
@@ -284,6 +349,8 @@ when latency can wait, low/no thinking for bulk MT, meter cache fields into
 | `score_model` | none (falls back to `improve_model`, then locale default) | Back-translation / rescore model. When it differs from the translate pin, `run-translate` auto-defers LLM scoring to an in-process phase B (see `defer_scoring`). |
 | `defer_scoring` | auto | `true` / `false` / unset. Unset: defer when `score_model ≠` translate pin and `multi_sample < 2`. Phase A writes `scorer=heuristic`; phase B batch-BT rescored keys. Restart resumes phase B from heuristic rows. |
 | `bt_batch_size` | `5` | Keys per batch back-translation call in phase B and `run-rescore`. |
+| `bt_cloud_batch_size` | `0` | Cloud scorer only: keys per back-translation request. `0` uses `[translate] cloud_batch_size` (50). A local scorer keeps `bt_batch_size`. |
+| `bt_workers` | `4` | Cloud scorer only: back-translation requests sent at once. `1` sends them one by one (this also turns off the overlap below). |
 | `vision_model` | none | Vision-capable model for screenshot-context translation. Unset means screenshot attachment never runs, even if `[prompt] context_dir` entries set `screen`/`image` — this is opt-in, not automatic, since most local text models can't accept images. See [ADR-17](decisions/ADR-17-screenshot-context-opt-in-vision.md). |
 
 ### `[quality.tiers]`
@@ -336,7 +403,7 @@ fields kept alongside, HMAC-signed when `LLM_LOCALIZE_WEBHOOK_SECRET` is set) or
 | Field | Default | Notes |
 |-------|---------|-------|
 | `batch_size` | `10` | Keys per LLM request on a local model. Queue blueprints pass it as `--batch-size`. |
-| `cloud_batch_size` | `50` | Keys per request for a cloud (paying) locale. Measured on Haiku 5.5: no parse misses, same BT, half the wall time of 10 (`experiments/quality_bakeoff/HAIKU_BATCH_PROBE_2026-11-14.md`). |
+| `cloud_batch_size` | `50` | Keys per request for a cloud (paying) locale. Measured on Haiku 5.5: no parse misses, same BT, half the wall time of batch size 10. |
 | `short_batch` | `false` | When true, strings under four words batch together even when the default planner would keep them single-key (UI label catalogues). ICU strings always stay single-key. |
 | `enabled` | `true` | When false, sync will not enqueue translate. |
 | `soft_retry` | `true` | Retry once when an accepted translation carries a soft defect (Latin words the source lacks in a non-Latin locale, English stopwords, the source echoed back, an approved glossary term missing). The retry is kept only when it has fewer issues; nothing is rejected (ADR-8, ADR-57). |

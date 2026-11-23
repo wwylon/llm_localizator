@@ -191,6 +191,10 @@ class TranslateRequest:
     plain_only: bool = False
     # "layout" / "layout:N": translate a small layout-check sample (frozen zh/ar).
     sample: str | None = None
+    # Only keys whose target value is absent or empty (never overwrites an existing translation).
+    only_missing: bool = False
+    # Cloud: one synchronous request per batch (full price, no Message Batches wait).
+    sync: bool = False
 
 
 @dataclass
@@ -420,6 +424,7 @@ class ScanRequest:
     no_write: bool = False
     strict: bool = False
     lint_directives: bool = False
+    surface: str | None = None  # comma-separated [scan.surfaces] names; others are left out
 
 
 @dataclass

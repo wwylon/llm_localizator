@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from ..projects.config import CONFIG_FILENAME
+
 __all__ = [
     "PROFILES", "StageResult", "Ctx", "run_verify", "render_markdown", "exit_code_for",
 ]
@@ -82,7 +84,7 @@ class Ctx:
         parts = rel.split("/")
         if any(p.startswith(".llm-") or p == ".llm-localizator" for p in parts):
             return True
-        if parts[-1] == ".llm-localize.toml":
+        if parts[-1] == CONFIG_FILENAME:
             return True
         cfg = self.cfg
         if cfg is None:
@@ -216,7 +218,7 @@ def run_verify(
 
     ctx = Ctx(src, ws, run_dir, profile, locales)
     ctx.fingerprint = fingerprint
-    cfg_file = ws / ".llm-localize.toml"
+    cfg_file = ws / CONFIG_FILENAME
     if resume and cfg_file.is_file():
         from ..projects import load_config
 

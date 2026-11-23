@@ -143,6 +143,8 @@ _LANGUAGES: tuple[SourceLanguage, ...] = (
     # Server-side template engines: HTML with embedded code (scan/templates.py).
     SourceLanguage("erb", (".erb", ".ejs", ".jsp", ".gsp"), (), None, ("icu", "printf"), "template", "none"),
     SourceLanguage("handlebars", (".hbs", ".handlebars", ".mustache"), (), None, ("icu", "brace"), "template", "none"),
+    # Phoenix templates: EEx tags plus ``{expr}`` interpolation (scan/templates.py, pool I: sorteios).
+    SourceLanguage("heex", (".heex", ".leex", ".eex"), (), None, ("icu", "printf"), "template", "none"),
     SourceLanguage(
         "jinja", (".twig", ".jinja", ".jinja2", ".j2", ".njk", ".liquid"), (), None, ("icu", "printf", "brace"),
         "template", "none",

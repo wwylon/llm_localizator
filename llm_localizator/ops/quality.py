@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..projects import ProjectConfig
 from ..projects.config import ConfigError, load_config
+from ..projects.config import CONFIG_FILENAME
 from .types import OpResult, QualityRequest
 from .validate import op_validate
 from .types import ValidateRequest
@@ -43,7 +44,7 @@ def adhoc_config(req: QualityRequest, scratch: Path) -> ProjectConfig:
         "[locales]", "targets = [" + ", ".join(_q(t) for t in targets) + "]", "",
         "[provider]", f"kind = {_q(kind)}", "",
     ]
-    path = scratch / ".llm-localize.toml"
+    path = scratch / CONFIG_FILENAME
     path.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
     return load_config(path)
 

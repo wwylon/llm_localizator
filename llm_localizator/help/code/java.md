@@ -4,7 +4,7 @@
 | Scanner language | Tier |
 |---|---|
 | `java` | basic |
-| `erb` | basic |
+| `erb` | supported |
 
 Calls that show text to a person (a literal given to one is reported at medium or high confidence): `JOptionPane.showMessageDialog(`, `Toast.makeText(`, `Snackbar.make(`, `.setText(`, `.setTitle(`, `.setToolTipText(`, `new JLabel(`, `new JButton(`, `.setContentTitle(`.
 

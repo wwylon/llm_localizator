@@ -1247,7 +1247,7 @@
         }).then(function (response) { return response.json(); });
     return estimateP.then(function (data) {
       if (!data || data.ok === false) {
-        showErr((data && (data.error || data.summary)) || "cost estimate failed", runCmd);
+        showErr((data && (data.error || data.summary)) || uiT("op_cost_failed", "cost estimate failed"), runCmd);
         return;
       }
       var est = (data && data.data) || {};

@@ -694,7 +694,7 @@
     fetchMessages().then(function (payload) {
       if (gen !== state.listGen) return;
       if (payload && payload.ok === false) {
-        list.replaceChildren(el("p", "search-error", payload.error || "messages failed"));
+        list.replaceChildren(el("p", "search-error", payload.error || uiT("ed_messages_failed", "Could not load messages")));
         return;
       }
       var filtered = applyClientFilter(payload.rows || []);
@@ -953,7 +953,7 @@
       namespace: row.namespace,
       key: row.key,
     }).then(function (payload) {
-      if (!payload.ok) throw new Error(payload.error || "row failed");
+      if (!payload.ok) throw new Error(payload.error || uiT("ed_row_failed", "Could not load this row"));
       // Another row may have been opened while this request was in flight.
       if (state.row && rowId(state.row) !== rowId(row) && rowId(state.row) !== rowId(payload.row)) {
         return;
@@ -1064,7 +1064,9 @@
     var keys = selectedKeys();
     if (!keys.length) return null;
     var bar = el("div", "bulk bulk-bar");
-    bar.appendChild(el("span", "", keys.length + (keys.length === 1 ? " string selected" : " strings selected")));
+    bar.appendChild(el("span", "", (keys.length === 1
+      ? uiT("ed_selected_one", "{n} string selected")
+      : uiT("ed_selected_other", "{n} strings selected")).replace("{n}", String(keys.length))));
     var translate = el("button", "btn btn-primary", uiT("ed_translate_selected", "Translate selected"));
     translate.type = "button";
     translate.addEventListener("click", function () {
@@ -1110,7 +1112,7 @@
         }),
         format: "csv",
       }).then(function (data) {
-        if (!data.ok) throw new Error(data.error || "export failed");
+        if (!data.ok) throw new Error(data.error || uiT("ed_export_failed", "Export failed"));
         var blob = b64ToBlob(data.file_base64, data.content_type);
         var link = el("a", "", data.filename || "export");
         link.href = URL.createObjectURL(blob);
@@ -1402,7 +1404,7 @@
             body: body.value,
             resolve: !!resolve,
           }).then(function (result) {
-            if (!result.ok) throw new Error(result.error || "comment failed");
+            if (!result.ok) throw new Error(result.error || uiT("ed_comment_failed", "Could not save the comment"));
             body.value = "";
             if (resolve && improveBox.checked) {
               var key = (row.namespace ? row.namespace + "." : "") + row.key;
@@ -1630,7 +1632,7 @@
         ambiguity: ambBox.checked,
       }).then(function (data) {
         var res = (data && data.data) || {};
-        if (!data.ok || !res.text) throw new Error(data.error || data.summary || "no suggestion");
+        if (!data.ok || !res.text) throw new Error(data.error || data.summary || uiT("ed_no_suggestion", "No suggestion available"));
         box.textContent = "";
         box.appendChild(el("div", "", res.text));
         if (res.score != null) {
@@ -1948,7 +1950,7 @@
     };
     function queueOp(path, body) {
       post(path, body).then(function (data) {
-        showError(data.summary || data.error || "queued");
+        showError(data.summary || data.error || uiT("ed_queued", "queued"));
       }).catch(showError);
     }
     var saveBtn = action(uiT("wf_save", "Save"), doSave);
@@ -1992,7 +1994,7 @@
       var note = window.prompt(uiT("ed_flag_english_prompt", "What is wrong with the English source?"), "");
       if (note === null) return;
       post("/api/ops/flag-source", { namespace: row.namespace, key: row.key, note: note })
-        .then(function (data) { showError(data.summary || data.error || "flagged"); })
+        .then(function (data) { showError(data.summary || data.error || uiT("ed_flagged", "Flagged")); })
         .catch(showError);
     }));
     secondary.appendChild(action(uiT("ed_flag_improve", "Flag and improve"), function () {
@@ -2009,7 +2011,7 @@
           flagged: true,
         });
       }).then(function (data) {
-        showError(data.summary || data.error || "queued");
+        showError(data.summary || data.error || uiT("ed_queued", "Queued"));
       }).catch(showError);
     }));
     secondary.appendChild(action(uiT("ed_mark_example", "Mark example"), function () {
@@ -2330,7 +2332,7 @@
       };
       post("/api/preview", body).then(function (data) {
         if (!data || !data.ok) {
-          out.textContent = (data && data.error) || "preview failed";
+          out.textContent = (data && data.error) || uiT("ed_preview_failed", "Preview failed");
           return;
         }
         if (fmt === "icu") {
@@ -2348,7 +2350,7 @@
         // catalogue XSS cannot reach window.__LLM_TOKEN on the parent page.
         out.replaceChildren();
         if (!data.html) {
-          out.textContent = text ? "(no preview)" : "";
+          out.textContent = text ? uiT("ed_no_preview", "(no preview)") : "";
           return;
         }
         if (fmt === "html" || /<[a-z]/i.test(data.html)) {
@@ -2425,7 +2427,7 @@
     line.appendChild(document.createTextNode(" "));
     if (compareTo && body && diffModeOn()) diffInto(line, compareTo, body, false);
     else phText(line, body || "");
-    if (superseded) line.appendChild(el("span", "", " (superseded)"));
+    if (superseded) line.appendChild(el("span", "", " " + uiT("ed_superseded", "(superseded)")));
     if (useText) {
       line.appendChild(document.createTextNode(" "));
       line.appendChild(action(uiT("ed_use", "Use"), function () { useTranslation(useText); }));
@@ -2755,11 +2757,11 @@
 
     var tabs = el("div", "tabs");
     [
-      { id: "translation", label: "Translation" },
-      { id: "history", label: "History" },
-      { id: "comments", label: "Comments" },
+      { id: "translation", key: "ed_tab_translation", label: "Translation" },
+      { id: "history", key: "ed_tab_history", label: "History" },
+      { id: "comments", key: "ed_tab_comments", label: "Comments" },
     ].forEach(function (item) {
-      var button = el("button", "tab-btn" + (state.tab === item.id ? " is-active" : ""), item.label);
+      var button = el("button", "tab-btn" + (state.tab === item.id ? " is-active" : ""), uiT(item.key, item.label));
       button.type = "button";
       button.addEventListener("click", function () {
         state.tab = item.id;
@@ -2999,7 +3001,7 @@
 
     window.localePicker(catalog, taken, function (locale, done) {
       post("/api/add-locale", { locale: locale }).then(function (data) {
-        if (!data.ok) throw new Error(data.error || "add locale failed");
+        if (!data.ok) throw new Error(data.error || uiT("ed_add_locale_failed", "Could not add the locale"));
         done(null);
         return loadLite();
       }).then(function (lt) {

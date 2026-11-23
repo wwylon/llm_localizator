@@ -41,7 +41,7 @@ ALLOWED: frozenset[tuple[tuple[str, ...], str]] = frozenset({
     (("translate",), "batch_size"),
     (("translate",), "cloud_batch_size"),
 })
-_KINDS = frozenset({"ollama", "anthropic", "openai", "deepseek", "deepl", "ctranslate2"})
+_KINDS = frozenset({"ollama", "anthropic", "openai", "deepseek", "deepl", "ctranslate2", "openai_compat"})
 _BUILTIN = Path(__file__).resolve().parent / "builtin"
 
 

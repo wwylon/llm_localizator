@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 # PyPI distribution name. The import package is llm_localizator and the command is
 # llm-localizator; "llm-localize" on PyPI is an unrelated project.
 name = "llm_localizator"
-version = "0.2.0"
+version = "0.2.1"
 description = "Localisation engine: find hardcoded strings, translate with local or cloud LLMs, validate and review message catalogues"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -43,13 +43,13 @@ dependencies = [
 hyphens = ["pyphen>=0.14"]
 ctranslate2 = ["ctranslate2>=4.0", "sentencepiece>=0.2"]
 embeddings = ["sentence-transformers>=3.0"]
-dev = ["pytest>=8.0", "pytest-xdist>=3.5", "ruff>=0.6", "coverage[toml]>=7.0"]
+dev = ["pytest>=8.0,<10", "pytest-xdist>=3.5,<4", "ruff>=0.6,<1", "coverage[toml]>=7.0,<8", "mypy>=1.10,<2", "pip-audit>=2.7,<3"]
 mcp = ["mcp>=1.2"]
 xlsx = ["openpyxl>=3.1"]
 e2e = ["playwright>=1.45", "pillow>=10"]
 
 [project.urls]
-Homepage = "https://llm-localizator.dev"
+Homepage = "https://wwylon.github.io/llm_localizator/"
 Repository = "https://github.com/wwylon/llm_localizator"
 Issues = "https://github.com/wwylon/llm_localizator/issues"
 Changelog = "https://github.com/wwylon/llm_localizator/blob/main/CHANGELOG.md"
@@ -76,7 +76,7 @@ markers = [
     "ollama: requires a live Ollama server and a pulled model",
     "live_bridge: requires LLM_LOCALIZE_BRIDGE_ROOT pointing at a consumer checkout",
     "browser: needs playwright + chromium (run with `-m browser`, extra e2e)",
-    "slow: hermetic but heavy (sleeps, large fixtures, subprocess); still in default suite",
+    "slow: hermetic but heavy (sleeps, large fixtures, subprocess, the scanner conformance matrix); in the full lane, skipped by scripts/test_lane.py quick",
 ]
 
 [tool.ruff]

@@ -340,17 +340,8 @@ def _ui_span(
     return f"<{tag}{extra} data-i18n=\"{escape(key)}\">{escape(text)}</{tag}>"
 
 
-def render_shell(
-    route_id: str,
-    token: str = "",
-    *,
-    ui_locale: str = "en",
-    qa_locales: list[str] | None = None,
-) -> str:
-    """One sidebar for every app page-map route. Filled pages mount their script."""
-    current = _BY_ID[route_id]
-    ui_labels = _ui_nav_labels(ui_locale)
-    qa = [c for c in (qa_locales or []) if c]
+def _build_nav(current, ui_labels: dict, ui_locale: str) -> list[str]:
+    """The sidebar: one heading per route group, one link per route (the active one marked)."""
     groups: list[str] = []
     for route in ROUTES:
         if route.id in _SIDEBAR_SKIP:
@@ -398,6 +389,21 @@ def render_shell(
                 f"{badge}"
                 f"</a>"
             )
+    return nav
+
+
+def render_shell(
+    route_id: str,
+    token: str = "",
+    *,
+    ui_locale: str = "en",
+    qa_locales: list[str] | None = None,
+) -> str:
+    """One sidebar for every app page-map route. Filled pages mount their script."""
+    current = _BY_ID[route_id]
+    ui_labels = _ui_nav_labels(ui_locale)
+    qa = [c for c in (qa_locales or []) if c]
+    nav = _build_nav(current, ui_labels, ui_locale)
     account_pages = {"login", "register", "pending", "setup"}
     if current.id in account_pages:
         return _render_auth_shell(
@@ -409,6 +415,7 @@ def render_shell(
         _script_tag("/static/appearance.js"),
         _script_tag("/static/api.js"),
         _script_tag("/static/request-health.js"),
+        _script_tag("/static/a11y.js"),
         _script_tag("/static/shell.js"),
     ]
     if current.id in _PAGE_SCRIPTS:
@@ -608,6 +615,7 @@ def render_shell(
         f"window.__LLM_UI_QA_LOCALES={json.dumps(qa)};</script>"
         "</head>"
         "<body>"
+        f'<a class="skip-link" href="#page-body" data-i18n="a11y_skip">{escape(ui_labels.get("a11y_skip", "Skip to content"))}</a>'
         '<div class="shell">'
         '<aside class="sidebar">'
         f'<a class="brand" href="{escape(_ui_href("/app", ui_locale))}">'

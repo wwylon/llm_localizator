@@ -28,7 +28,7 @@ from ..projects.paths import project_path
 __all__ = ["op_agent_hardcoded", "catalogue_gap_audit", "scan_cache_status"]
 
 # Bump when a scanner change should invalidate every stored per-file result.
-_SCAN_VERSION = 57  # bump on any scanner change; history: docs/scanners.md "Scanner versions"
+_SCAN_VERSION = 70  # bump on any scanner change; history: docs/scanners.md "Scanner versions"
 
 _PROMPT = (
     "List user-visible string literals in this source file that are NOT already "

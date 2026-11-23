@@ -194,6 +194,79 @@ def _scan_json_manifest(rel: str, path: Path, lines: list[str], result: ScanResu
         _report(result, rel, line, clean, "extension or app manifest")
 
 
+#: Keys of a form or widget definition whose string value is a caption (``{"type": "spinbox", "label": "Cargo"}``).
+_UI_JSON_KEYS = frozenset({
+    "label", "heading", "placeholder", "tooltip", "caption", "helperText", "hint", "buttonText", "subtitle",
+})
+#: Folders of translation files, which are catalogues, not hardcoded text.
+_JSON_CATALOGUE_DIRS = frozenset({"locales", "locale", "i18n", "lang", "languages", "translations", "node_modules"})
+_JSON_SKIP_NAMES = frozenset({
+    "package.json", "package-lock.json", "tsconfig.json", "composer.json", "manifest.json", "angular.json", "app.json",
+})
+
+
+def _walk_ui_config(node, found: list[str]) -> None:
+    if isinstance(node, dict):
+        has_type = "type" in node
+        for key, value in node.items():
+            if isinstance(value, str) and (key in _UI_JSON_KEYS or (key == "name" and has_type)):
+                found.append(value)
+            elif key == "options" and has_type and isinstance(value, list):
+                found.extend(v for v in value if isinstance(v, str))
+            else:
+                _walk_ui_config(value, found)
+    elif isinstance(node, list):
+        for item in node:
+            _walk_ui_config(item, found)
+
+
+def _scan_json_ui_config(rel: str, path: Path, lines: list[str], result: ScanResult) -> None:
+    """A JSON file that defines screens or forms (``label``, ``heading``, ``options`` next to a widget ``type``).
+
+    Only when the file holds at least five such captions, so a data file with one ``label`` key is left alone.
+    """
+    if path.name.lower() in _JSON_SKIP_NAMES or {p.lower() for p in path.parts[:-1]} & _JSON_CATALOGUE_DIRS:
+        return
+    try:
+        data = json.loads("\n".join(lines))
+    except ValueError:
+        return
+    found: list[str] = []
+    _walk_ui_config(data, found)
+    if len(found) < 5:
+        return
+    for value in dict.fromkeys(found):
+        clean = " ".join(value.split())
+        line = next((i for i, row in enumerate(lines, 1) if value[:40].replace("\\", "") in row.replace("\\", "")), 1)
+        _report(result, rel, line, clean, "config-driven UI text (JSON)")
+
+
+_MKDOCS_TOP = re.compile(r"^(?:site_name|site_description)\s*:\s*(?P<v>.+?)\s*$")
+_MKDOCS_NAV = re.compile(r"""^\s*-\s+(?P<label>[^:#\n]+?)\s*:(?:\s|$)""")
+
+
+def _scan_mkdocs(rel: str, lines: list[str]) -> list[tuple[int, str, str]]:
+    found: list[tuple[int, str, str]] = []
+    in_nav = False
+    for number, line in enumerate(lines, 1):
+        if line.lstrip().startswith("#"):
+            continue
+        top = _MKDOCS_TOP.match(line)
+        if top:
+            found.append((number, _clean_value(top.group("v")), "mkdocs site text"))
+        if re.match(r"^nav\s*:", line):
+            in_nav = True
+            continue
+        if in_nav:
+            if line and not line[0].isspace() and not line.startswith("-"):
+                in_nav = False
+                continue
+            nav = _MKDOCS_NAV.match(line)
+            if nav:
+                found.append((number, nav.group("label").strip().strip("\"'"), "mkdocs navigation label"))
+    return found
+
+
 def matches_content_glob(scanner, path: Path) -> bool:
     """``[scan] content_globs``: files the project declares as shown text (opt-in; OpenAPI docs, bot YAML)."""
     globs = getattr(scanner, "content_globs", ()) or ()
@@ -217,12 +290,17 @@ def scan_content_file(scanner, path: Path, lines: list[str], result: ScanResult)
     elif suffix in {".yml", ".yaml"}:
         if declared:
             _scan_yaml(rel, lines, result)
+        elif path.name.lower() in {"mkdocs.yml", "mkdocs.yaml"}:
+            for number, text, kind in _scan_mkdocs(rel, lines):
+                _report(result, rel, number, text, kind)
     elif suffix == ".toml":
         if declared or {p.lower() for p in path.parts[:-1]} & _TOML_DIRS:
             _scan_toml(rel, lines, result)
     elif suffix == ".json":
         if path.name in {"package.json", "manifest.json"} and len(lines) < 20000:
             _scan_json_manifest(rel, path, lines, result)
+        elif len(lines) < 20000:
+            _scan_json_ui_config(rel, path, lines, result)
     elif suffix == ".plist":
         text = "\n".join(lines)
         for match in _PLIST_PAIR.finditer(text):

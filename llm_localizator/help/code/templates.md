@@ -4,7 +4,7 @@
 | Scanner language | Tier |
 |---|---|
 | `jinja` | basic |
-| `erb` | basic |
+| `erb` | supported |
 | `handlebars` | basic |
 | `gotmpl` | basic |
 | `razor` | basic |

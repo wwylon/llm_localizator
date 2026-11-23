@@ -38,6 +38,8 @@ TIERS: dict[str, str] = {
     # 2026-11-14, tier review over pools A-F (TIER_REVIEW.md): astro promoted (5 held-out projects at the bar, 3 below);
     # typescript demoted (7 at the bar, 8 below; it was supported before, so it is simply absent here and reads basic).
     "astro": "supported",
+    # 2026-11-17, tier review over pools A-I (TIER_REVIEW.md): erb promoted (5 held-out projects at the bar, 2 below; Rails views).
+    "erb": "supported",
 }
 
 

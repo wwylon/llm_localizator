@@ -18,7 +18,7 @@ from .pricing import (
     price_sources,
 )
 
-CLOUD_KINDS = frozenset({"anthropic", "deepl", "openai", "deepseek"})
+CLOUD_KINDS = frozenset({"anthropic", "deepl", "openai", "deepseek", "openai_compat"})
 
 __all__ = [
     "CLOUD_KINDS",
@@ -89,7 +89,13 @@ def resolve_translation_model(cfg, locale: str, kind: str) -> str:
         return str(explicit)
     if kind == "deepl":
         return "deepl"
-    return CLOUD_DEFAULT_MODEL.get(kind, CLOUD_DEFAULT_MODEL["anthropic"])
+    default = CLOUD_DEFAULT_MODEL.get(kind)
+    if default is None:
+        raise PricingError(
+            f"provider kind {kind!r} has no default model: set [locales.models] for {locale} "
+            "and its price under [budget.rates]"
+        )
+    return default
 
 
 def preamble_chars(cfg, locale: str) -> int:

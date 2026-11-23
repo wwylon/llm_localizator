@@ -593,7 +593,7 @@ def _step_translate(cfg: ProjectConfig | None, *, rows=None) -> GuideStep:
             cli="llm-localizator export --format xlsx",
             web="/app/editor",
         )
-    if approach == "cloud" or cfg.provider.kind in ("anthropic", "openai", "deepseek", "deepl"):
+    if approach == "cloud" or cfg.provider.kind in ("anthropic", "openai", "deepseek", "deepl", "openai_compat"):
         return _gs(
             "translate", title, "todo",
             f"{pending} string(s) still need translating ({summary}). Check the price with "

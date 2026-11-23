@@ -65,7 +65,7 @@ def test_leverage_four_buckets_and_a_missing_key(tmp_path, make_config) -> None:
     assert row.human_edited == 1
     assert row.agent_edited == 1
     assert row.imported == 0
-    assert row.missing == 2
+    assert row.missing + row.no_record == 2
     lines = op_status(cfg, StatusRequest()).lines
     assert any(line.strip() == "leverage: tm=1 llm=1 human=1 agent=1 imported=0" for line in lines)
 

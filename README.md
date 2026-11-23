@@ -22,14 +22,14 @@ writes translations back through the paths you configure.
 - **A hardcoded-string finder that measures itself.** `agent-hardcoded` lists UI text that never
   went through a translation call, with high, medium or low confidence per hit. It is
   benchmarked on held-out open-source projects that were never used to tune it, labelled blind.
-  On the latest held-out set macro precision was 0.91 and macro recall 0.34: what it reports is
-  usually right, and it finds about a third of the labelled text outside the mainstream
-  JS/Python/Dart paths. JavaScript, TSX, HTML, Vue, Svelte, Astro, XML UI files and Godot
+  On the seven latest held-out rounds (136 projects, 2026-11) macro precision was 0.74 and macro recall 0.59:
+  about seven in ten of what it reports is right, and it finds about three in five of the labelled text, with large
+  differences between ecosystems. JavaScript, TSX, HTML, Vue, Svelte, Astro, ERB, XML UI files and Godot
   scenes are at the **supported** tier; 40 languages and formats are scanned in all. Tiers,
   numbers and known gaps: [docs/scanners.md](docs/scanners.md). `explain-scan FILE:LINE` says
   why a line was or was not reported.
 
-  <img src="https://raw.githubusercontent.com/wwylon/llm_localizator/main/docs/assets/scanner-accuracy.svg" width="640" alt="Scanner precision 0.91 and recall 0.34 on 12 held-out projects, with recall by file kind">
+  <img src="https://raw.githubusercontent.com/wwylon/llm_localizator/main/docs/assets/scanner-accuracy.svg" width="640" alt="Scanner precision and recall on the seven latest held-out rounds: precision 0.65, 0.70, 0.75, 0.80, 0.84, 0.79 and 0.77, recall 0.59, 0.67, 0.59, 0.68, 0.47, 0.51 and 0.61">
 - **Review like a translation team, not a diff.** A local web UI with roles, per-locale
   assignments, tasks with due dates, approve-only publishing, translation memory, glossary
   editing, history and back-translation scores, so people review what the model wrote.

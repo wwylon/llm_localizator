@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 
 from ..scan.base import UNSUPPORTED_UI_EXTENSIONS
+from ..projects.config import CONFIG_FILENAME
 from .runner import (
     DEGRADED, FAIL, PASS, SKIPPED, UNSUPPORTED, Ctx, StageResult, _COPY_SKIP, _same_bytes,
 )
@@ -53,7 +54,7 @@ def s0_fingerprint(ctx: Ctx) -> StageResult:
             except OSError:
                 continue
             libs.update(label for key, label in _I18N_MARKERS.items() if key in text)
-    has_cfg = (ctx.ws / ".llm-localize.toml").is_file()
+    has_cfg = (ctx.ws / CONFIG_FILENAME).is_file()
     ctx.fingerprint = {
         "files": files,
         "lines": lines,
@@ -74,11 +75,11 @@ def s1_lifecycle(ctx: Ctx) -> StageResult:
     from ..projects.registry import register_project, resolve_project
 
     res = StageResult("S1", "lifecycle", PASS)
-    cfg_file = ctx.ws / ".llm-localize.toml"
+    cfg_file = ctx.ws / CONFIG_FILENAME
     if cfg_file.is_file():
         ctx.cfg = load_config(cfg_file)
         ctx.has_catalogue = True
-        res.notes.append("existing .llm-localize.toml used")
+        res.notes.append(f"existing {CONFIG_FILENAME} used")
     else:
         out = op_init(InitRequest(directory=str(ctx.ws), name="verify-target"))
         if out.ok:
@@ -116,7 +117,7 @@ def s1_lifecycle(ctx: Ctx) -> StageResult:
     for n in (1, 2):
         d = ctx.run_dir / f"dummy{n}"
         d.mkdir(exist_ok=True)
-        (d / ".llm-localize.toml").write_text(f'[project]\nname = "dummy{n}"\n', encoding="utf-8")
+        (d / CONFIG_FILENAME).write_text(f'[project]\nname = "dummy{n}"\n', encoding="utf-8")
         register_project(f"dummy{n}", d)
     try:
         for n in (1, 2):

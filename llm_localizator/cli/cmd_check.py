@@ -31,6 +31,12 @@ def evaluate(rows: list[dict], *, min_coverage: float, allow_stale: bool) -> lis
     return problems
 
 
+def github_annotation(message: str) -> str:
+    """One GitHub Actions error annotation (``::error``) for a check problem; newlines and ``%`` are escaped."""
+    text = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    return f"::error title=llm-localizator check::{text}"
+
+
 def run(args: argparse.Namespace) -> int:
     cfg = resolve(args.project, args.config)
     result = op_status(cfg, StatusRequest())
@@ -44,6 +50,11 @@ def run(args: argparse.Namespace) -> int:
     problems = evaluate(rows, min_coverage=args.min_coverage, allow_stale=args.allow_stale)
     if args.fmt == "json":
         print(json.dumps({"ok": not problems, "problems": problems}, indent=2))
+    elif args.fmt == "github":
+        for line in problems:
+            print(github_annotation(line))
+        if not problems:
+            print(f"{cfg.name}: {len(rows)} locale(s) up to date")
     elif problems:
         for line in problems:
             print(line, file=sys.stderr)

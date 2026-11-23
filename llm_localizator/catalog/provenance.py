@@ -24,13 +24,14 @@ PROVIDERS = frozenset({
     "openai",
     "deepseek",
     "deepl",
+    "openai_compat",
     "human",
     "agent",
     "import",
 })
 
 PROVIDER_LOCAL = frozenset({"ollama", "ctranslate2"})
-PROVIDER_CLOUD = frozenset({"anthropic", "deepl", "openai", "deepseek"})
+PROVIDER_CLOUD = frozenset({"anthropic", "deepl", "openai", "deepseek", "openai_compat"})
 
 
 def normalize_provider(kind: str | None) -> str:

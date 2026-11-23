@@ -173,6 +173,11 @@ _NOT_COPY = re.compile(
     r"|^[A-Za-z]*[a-z][A-Z][A-Za-z]*-[A-Za-z0-9-]+$"   # camelCase-with-dash ids (CodeMirror-linenumbers)
     r"|^(?i:ctrl|cmd|command|alt|option|shift|meta|control)\s*\+\s*\S+$"  # keyboard shortcuts
 )
+#: Severity words passed as the second argument of a toast/notify call (v70).
+_TOAST_KINDS = frozenset({
+    "err", "error", "info", "warn", "warning", "ok", "success", "danger", "fail", "failure",
+    "notice", "debug", "primary", "secondary", "neutral",
+})
 #: ``{en: "…", pl: "…"}`` — copy translated in the source itself, not a leftover.
 _ELEMENT_FACTORIES = frozenset({"React.createElement", "createElement", "h", "jsx", "_jsx", "jsxs", "_jsxs"})
 _LOCALE_KEY = re.compile(r"^[a-z]{2}(?:[-_][A-Za-z]{2,4})?$")
@@ -239,6 +244,8 @@ def judge(lit: JsLiteral, text: str, sinks: dict[str, set[int]] | None = None) -
             return "medium", "template literal with text around ${…}; use one ICU message"
         return ("low", "template literal with text") if shown else None
     t = " ".join(text.split())
+    if lit.arg >= 1 and t in _TOAST_KINDS and (callee in UI_CALLS or base in UI_CALLS):
+        return None  # ``showToast(msg, 'err')``: the severity argument, not copy
     if (callee in UI_CALLS or base in UI_CALLS) and (is_lone_word(t) or is_short_label(t)):
         # ``alert("nedelja")``: a call that shows text to a person makes even a lone lower-case word copy
         # (Spanish, Catalan, Finnish and others write month, day and language names in lower case).

@@ -368,7 +368,7 @@
       tgtTd.appendChild(highlight(hit.translation || "", state.target ? needle : ""));
       if (hit.superseded) {
         tgtTd.appendChild(document.createTextNode(" "));
-        tgtTd.appendChild(el("span", "tm-superseded-mark", "(superseded)"));
+        tgtTd.appendChild(el("span", "tm-superseded-mark", uiT("tm_superseded", "(superseded)")));
       }
       tr.appendChild(tgtTd);
       tr.appendChild(keyCell(hit));
@@ -486,7 +486,9 @@
     card.appendChild(el(
       "div",
       "tm-summary-sub",
-      fmtNum(count) + " string-locale pair" + (count === 1 ? "" : "s"),
+      fmtNum(count) + " " + (count === 1
+        ? uiT("tm_pair_one", "string-locale pair")
+        : uiT("tm_pair_many", "string-locale pairs")),
     ));
     return card;
   }
@@ -677,8 +679,8 @@
           }).then(function (response) {
             if (!response.ok) {
               return response.json().then(function (err) {
-                throw new Error(err.error || "Export failed");
-              }, function () { throw new Error("Export failed"); });
+                throw new Error(err.error || uiT("tm_export_failed", "Export failed"));
+              }, function () { throw new Error(uiT("tm_export_failed", "Export failed")); });
             }
             return response.blob();
           });

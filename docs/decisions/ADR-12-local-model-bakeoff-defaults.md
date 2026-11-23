@@ -4,12 +4,13 @@
 
 ## Decision
 
-Per-locale Ollama models are chosen from a checked-in bakeoff
-(`experiments/quality_bakeoff/`), not from ad-hoc vibe checks. Until a live
-bakeoff fills `REPORT.md`, dogfood keeps `qwen2.5:7b` for translate and
-`aya-expanse:8b` for improve. A locale may switch to Anthropic/DeepL only after
-it fails the bakeoff gate (mean BT &lt; 0.70 or glossary-blocking rejects) or an
-operator sets `[locales.providers]` explicitly with `[budget] monthly_usd > 0`.
+Per-locale Ollama models are chosen from a bakeoff report produced by
+`llm-localizator bakeoff` / `run-bakeoff` (see [model-evaluation.md](../model-evaluation.md)),
+not from ad-hoc vibe checks. Until a live bakeoff fills `REPORT.md`, dogfood
+keeps `qwen2.5:7b` for translate and `aya-expanse:8b` for improve. A locale may
+switch to Anthropic/DeepL only after it fails the bakeoff gate (mean BT &lt; 0.70
+or glossary-blocking rejects) or an operator sets `[locales.providers]`
+explicitly with `[budget] monthly_usd > 0`.
 
 ## Why
 

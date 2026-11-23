@@ -1,8 +1,12 @@
-# Manual-only for now (workflow_dispatch). The default pytest run is hermetic.
+# Runs on push and pull requests. If GitHub Actions is disabled for the repository (billing, see plan/CI_POSTPONED.md),
+# enable it with `gh workflow enable CI`; the same checks run locally with `make quick`, `make types`, `make audit`.
 
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -13,19 +17,19 @@ jobs:
         os: [ubuntu-latest, windows-latest]  # the primary dev host is Windows
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (locked)
         run: uv sync --locked --extra dev --extra hyphens
-      - name: Tests
-        # The default run is hermetic. Marker-gated suites (ollama, live_bridge)
-        # need a GPU host or a consumer checkout and are excluded here.
-        run: uv run pytest -q -m "not ollama and not live_bridge"
+      - name: Tests (quick lane on pull requests, full lane otherwise)
+        # Hermetic: marker-gated suites (ollama, live_bridge, browser) need a GPU host, a consumer checkout or
+        # chromium and are excluded in both lanes.
+        run: uv run python scripts/test_lane.py ${{ github.event_name == 'pull_request' && 'quick' || 'full' }}
 
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Ruff
         run: uvx ruff check llm_localizator
@@ -33,7 +37,7 @@ jobs:
   self-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (locked)
         run: uv sync --locked
@@ -44,9 +48,38 @@ jobs:
   self-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install (locked)
         run: uv sync --locked
       - name: Sync dry-run (backlog surface)
         run: uv run llm-localizator run-sync --dry-run
+
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (locked)
+        run: uv sync --locked --extra dev
+      - name: mypy ratchet (the error count may not rise)
+        run: uv run python scripts/check_types.py
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (locked)
+        run: uv sync --locked --extra dev
+      - name: Known vulnerabilities in locked dependencies
+        run: |
+          uv export --no-hashes --no-emit-project -o requirements.audit.txt
+          uv run pip-audit -r requirements.audit.txt --no-deps
+
+  module-budgets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
+      - run: python scripts/check_module_budgets.py

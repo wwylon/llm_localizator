@@ -19,8 +19,7 @@ checkout. The llm_localizator agent owns dogfood UI, scanner sinks, and this
 machinery — it does not rewrite consumer trees (ADR-32). Report scanner gaps as
 GitHub issues.
 
-Short paste for coding agents: [agents.md](agents.md) § UI QA. Cross-project
-pointer: `devkit/rules/llm-localizator.md`.
+Short paste for coding agents: [agents.md](agents.md) § UI QA.
 
 ### Which English-leak path?
 
@@ -319,8 +318,8 @@ Treat the output as a worklist to review, not a verdict.
 
 **Tiers.** A language is **supported** only when at least three held-out projects (never used to tune the scanner) reach
 recall >= 0.60 and precision >= 0.70 on that language's files, outnumbering the held-out projects below that bar; a supported
-language is demoted when the projects below the bar outnumber those at it. After the last held-out set (2026-11-14, pools A-F, evidence
-from v37–v57) that holds for JavaScript, TSX, HTML, Vue, Svelte, Astro, XML UI files (Android layouts, storyboards, XAML,
+language is demoted when the projects below the bar outnumber those at it. After the last held-out set (2026-11-17, pools A-I, evidence
+from v37–v58) that holds for JavaScript, TSX, HTML, Vue, Svelte, Astro, ERB (Rails views), XML UI files (Android layouts, storyboards, XAML,
 FXML, Qt `.ui`) and Godot scenes (`.tscn`/`.tres`). TypeScript went back to basic (7 projects at the bar, 8 below). Python and Dart went back to basic: per-language held-out numbers for `.py` and `.dart` files are below the bar
 (Python 0 of 10 projects; earlier whole-project scores were carried by Jinja templates).
 Everything else that runs is **basic**: the shared literal detector with per-ecosystem UI sinks (`scan/ecosystems.py`), so it finds
@@ -329,6 +328,12 @@ text handed to known UI calls (medium or high confidence) and other prose (low).
 held-out runs: Kotlin/Android (UI text is almost all `stringResource`; the remaining hits are previews and animation labels),
 C# (`MessageBoxViewModel` properties and WPF initializers are still partly missed), Rust (clap doc comments, bare-word table
 headers), C++ (no held-out app cloned), Swift (two held-out apps pass, three are required).
+
+**Latest rounds (scanner v57, v58, v61, v64 and v67).** Pool F (2026-11-14, 30 projects) scored macro precision 0.65 and macro recall 0.59 at high+medium
+confidence; pool G (2026-11-16, 19 projects, chosen for HAML, Astro, Go TUIs, QML, Godot, Swift, Discord bots, extensions, Vue,
+React/Tauri and Flask/Jinja) scored 0.70 and 0.67. Pool H (2026-11-16, 21 projects: HAML, Go, TypeScript, Swift, Python desktop, Flutter; scanner v57) scored 0.75 and 0.59. Pool I (2026-11-17, 19 projects: Svelte, Vue, Rails, Elixir, QML, Java; scanner v58 and the placeholder-matching rule of benchmark metric 3) scored 0.80 and 0.68. Pool J (2026-11-17, 14 projects: Python desktop, Java UI, Phoenix, Flutter; scanner v61, the first round scored on a scanner not tuned on any of its projects since pool I) scored 0.84 and 0.47. Pool K (2026-11-17, 16 projects: Python desktop, JavaFX and Swing, Vue and EJS, Flutter; scanner v64, labelled blind before any scan) scored 0.79 and 0.51: the first fresh round after the pool J fixes, and the honest figure for v64 (the 0.71 recall measured on pool J after the fixes was development data). Pool L (2026-11-18, 17 projects: Python desktop, Java Swing and JavaFX, React, Svelte, Vue; scanner v67, labelled blind before any scan) scored 0.77 and 0.61: the first fresh round after the v65 to v67 fixes, which were written from pool K misses. Java desktop apps (jeveassets 0.24, algobuddy 0.40) and Python GUIs with their own `t()` catalogue (persian-ocr-app, precision 0.12) are the weak spots; web projects scored well. Over the 136 projects that is macro precision 0.74 and macro recall 0.59: about seven in ten of what it reports is right, and it finds about three in five of the labelled text. Pools H, I, J, K and L were scored with different scanner and matching versions, so read the combined figure as an average, not as one run. Pool I is now development data: later scanner changes (Java, HEEx) were written after seeing its misses, and pool J shows what a fresh round looks like: precision held, recall fell. Plain `.txt` resource files outside template folders (tdsm), Java text blocks and tooltips, and Python desktop text built in helper widgets are the biggest misses.
+Pool G changed no tier: HAML reached 4 projects at the bar and 4 below, Go 4 at and 10 below, QML 1 at and 5 below, so they stay basic.
+Precision varies a lot by project (0.12 to 1.00), so treat the output as a worklist.
 
 **Held-out by storage pattern (scanner v38, 2026-11-11).** Twelve projects chosen for where their text lives (Electron menus,
 QML, Godot, Kivy, Phoenix, Rails/HAML, Go cobra, Discord bots, Chrome extension, OpenAPI/Markdown docs), labelled by agents that
@@ -370,7 +375,7 @@ Known limits:
 | dart | `.dart` | literal | basic | 12/12 cells |
 | desktop | `.desktop` | propdef | basic | n/a |
 | elixir | `.ex` `.exs` | literal | basic | 11/11 cells |
-| erb | `.erb` `.ejs` `.jsp` `.gsp` | template | basic | 8/8 cells |
+| erb | `.erb` `.ejs` `.jsp` `.gsp` | template | supported | 8/8 cells |
 | freemarker | `.ftl` | template | basic | 7/7 cells |
 | gdscript | `.gd` | literal | basic | n/a |
 | go | `.go` | literal | basic | 12/12 cells |
@@ -378,6 +383,7 @@ Known limits:
 | gotmpl | `.gohtml` `.tmpl` `.tpl` | template | basic | 7/7 cells |
 | haml | `.haml` | indent | basic | n/a |
 | handlebars | `.hbs` `.handlebars` `.mustache` | template | basic | 7/7 cells |
+| heex | `.heex` `.leex` `.eex` | template | basic | n/a |
 | html | `.html` `.htm` | html | supported | n/a |
 | java | `.java` | literal | basic | 11/11 cells |
 | javascript | `.js` `.mjs` `.cjs` | js | supported | 12/12 cells |
@@ -421,6 +427,19 @@ Known limits:
 | v55 | M2 rest: one per-file routine for `scan` and `agent-hardcoded` (same `t_functions`, relative paths, directives on every file, duplicate `(line, text)` dropped, delegates inherit `[scan]` settings, per-scan caches reset); scan-cache key covers side files (`go.mod`, `package.json`, `.strings`/`.xcstrings`, `project.pbxproj`, `Info.plist`); innermost UI sink before a literal; Mustache `{{name}}` at end of line is a slot; short Svelte/Vue expressions lose their braces; PHP code is not read as HTML; char literals (`'"'`) open no string in Go/C#/Rust; embedded-markup hits get their own line in triple-quoted strings; Markdown content dirs judged below the root; coverage counts only scanned files; log calls ignore parentheses in strings; JS call stack pops only a matching bracket; a full `UI_CALLS` callee beats a non-UI last segment; multi-line MDX `export`; L26–L31 (locale-table keys, `promptText`, apostrophes in `textContent`/`createTextNode`/dialogs, `el()` third-arg concat, `.HTML`) |
 | v56 | M4 speed, identical hits on all 146 dev projects: relative paths by string prefix instead of `Path.relative_to`, `path_is_skipped` memoised per walk, lexers and the JS tokenizer jump to the next character that can start a token, one `ast.parse` per Python module, cached `is_prose`, no `resolve()` per file; about a third less scan CPU |
 | v57 | Plain-text templates drop `key: {{ value }}` lines with a lowercase key (a machine-readable record such as patchman's `report.txt`); `Reported by: {{ name }}` is still reported |
+| v70 | JS: a lowercase severity word (`err`, `info`, `warn`, `success` …) passed as the second or later argument of a toast or notify call is not copy (`showToast(msg, 'err')`). Found on tqdaemon, where about 25 hits were this. No held-out measurement was made for this change, so no precision or recall figure is claimed for it |
+| v69 | Python desktop projects: a formatted message (an f-string that starts with a capitalised word and holds a placeholder, such as `f"Error: {exc}"` or `f"Chapters ({n})"`) is screen text unless it is a log or print argument, a URL, a query or a path. Written from the pool H to L Python misses, so those pools are development data |
+| v68 | Python: strings inside `re.compile`/`re.sub`/`re.search`... calls and in tuples that pair a pattern with its replacement are developer text, whatever script they are written in; a dict keyed by language codes (`{"en": {...}, "fa": {...}}`) is the project's own catalogue, read through its own lookup. Java: a project's output-pane helpers (`appendProgress("...")`, `appendOutput`, `appendConsole`) and `showAlert`/`showDialog`/`showConfirm`-style helpers (first argument). Written from pool L misses, so pool L is development data from here on (pool M will be the fresh check) |
+| v67 | Captions passed to Jinja macros (`{{ web_button("id", "Login", placeholder="Password") }}`: a capitalised string argument, not ids, paths or `url_for`/`include`); Java `return "Top Right";` inside a display-name method (`toString`, `getName`, `getLabel`...); Slicer-style Python Qt modules (`import qt`, `slicer`, `ctk`) count as GUI modules. Not done on purpose: messages of project-defined exceptions outside GUI projects (they are developer text there) |
+| v66 | Python: sentences held in `msg`/`message`/`detail`-style variables, `return True, "message"`, `*_tooltip=`/`*_label=` keywords, `options=[...]` lists, and in GUI modules caption variables (`desc`, `tooltip`) and caption attributes (`page.title = ...`, `control.value = ...`), `content=` on widgets. Benchmark metric 4: a bare `…` in a hit counts as a slot, so JS and TS template literals match their `{x}` labels (a measurement fix: the scanner already reported them) |
+| v65 | Misses of fresh pool K: Flet widgets (`ft.Text`, `ft.ElevatedButton`), and `label=`/`tooltip=`/`placeholder=`/`hint_text=` keyword text on any call in a Python GUI project (`SettingField(label="Port", ...)`; `ArgumentParser` and `Field` descriptions stay out); JSON files that define screens or forms (at least five `label`, `heading`, `placeholder`, widget `name` or `options` captions; translation catalogues in `locales/` folders stay out); `mkdocs.yml` site name, description and navigation labels |
+| v64 | Python desktop GUI projects (a dependency or import of Tk, Qt, wx, Kivy or Toga): `set_status`/`update_status`/`show_error`-style helpers, errors raised with a project-defined class and a sentence, and code-to-label tables (`{"dol": "App"}`); Qt dialog statics (`QInputDialog.getText`, `QFileDialog.getSaveFileName`) and `addRow`; Java enum constants with display names, widget-factory helpers (`getDirectorySelectWidget(...)`) and progress-monitor task names. Repository documentation (root `README`, `CODE_OF_CONDUCT` and the like) stays unscanned: the rubric labels it `dev` |
+| v63 | A string on the line after an opening `Text(` (or any UI sink call split over lines) is judged with that sink; AppStream `*.metainfo.xml` and `*.appdata.xml` store text (`summary`, `name`, `p`, `li`, `caption`) is scanned |
+| v62 | Misses of the fresh pool J: Qt `QCoreApplication.translate(ctx, text)` (pyuic output), `QMessageBox.warning(self, title, text)` and Tk `messagebox.showerror`, `show_success`-style helpers; Java `updateStatus`/`showStatus`/`showErrorDialog`/`sendError`, file-chooser filters and titled borders; plain `.txt` text resources in `text/`, `texts/`, `strings/`, `messages/`, `help/` and `tooltips/` folders. Development check on pools J, I and H: recall 0.47 to 0.61, 0.68 to 0.71 and 0.68 to 0.69; precision 0.84 to 0.80, 0.80 to 0.81 and 0.82 to 0.82 (pool J is now development data) |
+| v61 | Phoenix templates (`.heex`, `.leex`, `.eex`) are scanned: EEx tags like ERB and `{expr}` interpolation; before this the visible text of Elixir web projects was not scanned at all |
+| v60 | Java UI (Swing, JavaFX, Vaadin): any widget class named for what it shows (`new ModernButton("Create")`) and the placeholder, header and helper-text setters are sinks; development check on pool I: Java recall 0.10 to 0.23 (nanoleaf), 0.40 to 0.43 (spring-ai) |
+| v59 | ERB promoted to the supported tier (tier review over pools A-I: 5 held-out projects at the bar, 2 below); no scanner behaviour change |
+| v58 | Python desktop GUIs (Tk, Qt, wx, Kivy, Toga): widget captions, menu entries, window titles, tooltips and list items are medium-confidence copy, only in modules that import a GUI toolkit; Dart text constants (`static const String agenda_text = "…"`); one file's scanner error is recorded under `skipped` instead of aborting the scan |
 | v47 | Set-B fixes: Go CLI terminal output (`fmt.Print*`, coloured text, the project's output helpers) in CLI projects, with format-only strings dropped and doc generators / `hack/` skipped (B23); C# `[Description]` enum labels, `ValidationResult` messages and status/progress event args (B24); QML date-format arguments; `thirdparty/` skipped (B26) |
 | v46 | Set-A fixes: project translate helpers in QML (`I18n.t("k", "Fallback")`) are routed (B17); Qt/QML Python backends report their status text (B18); `strings.dart`-style files hold copy (B19); WidgetKit `.configurationDisplayName`/`.description`, and SwiftUI keys count as routed only when the file's Xcode target ships `Localizable` (B20) |
 | v45 | Astro components (TS frontmatter + JSX body) and MDX pages (Markdown + JSX blocks) are scanned; SVG path data and comma-separated keyword lists are not copy (B2) |

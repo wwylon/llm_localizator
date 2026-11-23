@@ -69,6 +69,8 @@ class ProviderConfig:
     timeout_shorten_s: int = 120
     # CTranslate2 model directory (Wave 3b / MADLAD). Unused by Ollama.
     model_path: str = ""
+    # Name of the environment variable that holds this provider's API key (never the key itself).
+    api_key_env: str = ""
 
 
 @dataclass
@@ -85,6 +87,7 @@ class NamedProvider:
     timeout_single_s: int = 300
     timeout_shorten_s: int = 120
     model_path: str = ""
+    api_key_env: str = ""
 
     def display_name(self) -> str:
         return self.name.strip() or self.id
@@ -99,6 +102,7 @@ class NamedProvider:
             timeout_single_s=self.timeout_single_s,
             timeout_shorten_s=self.timeout_shorten_s,
             model_path=self.model_path,
+            api_key_env=self.api_key_env,
         )
 
 
@@ -114,6 +118,7 @@ def _named_from_provider(provider: ProviderConfig, *, id: str = "default", name:
         timeout_single_s=provider.timeout_single_s,
         timeout_shorten_s=provider.timeout_shorten_s,
         model_path=provider.model_path or "",
+        api_key_env=provider.api_key_env or "",
     )
 
 
@@ -221,6 +226,9 @@ class ProjectConfig:
     scan_content_globs: list[str] = field(default_factory=list)  # opt-in shown-text files (OpenAPI, bot YAML)
     scan_directive_aliases: bool = True  # eslint/noqa-style ignores count as l10n-ignore
     scan_unused_allow: list[str] = field(default_factory=list)  # key globs never reported by validate --unused
+    #: ``[scan.surfaces.<name>]``: {"paths": [globs], "mode": "fix" | "report" | "ignore"}.
+    #: Empty means every finding is a "fix" finding, as before.
+    scan_surfaces: dict[str, dict] = field(default_factory=dict)
     scan_out_dir: Path | None = None
 
     # Long-form Markdown documents (terms, privacy policy). Separate from the
@@ -257,6 +265,9 @@ class ProjectConfig:
     # When None, translate auto-defers LLM scoring if score_model != pin model.
     defer_scoring: bool | None = None
     bt_batch_size: int = 5
+    #: Cloud scorer: keys per back-translation request (0 = use [translate] cloud_batch_size) and parallel requests.
+    bt_cloud_batch_size: int = 0
+    bt_workers: int = 4
     # Vision-capable model for screenshot-context translation. Unset by
     # default -- most local text models cannot accept images, so screenshot
     # attachment is skipped entirely unless a project opts in explicitly.

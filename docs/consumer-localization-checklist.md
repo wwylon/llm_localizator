@@ -7,6 +7,9 @@ detail lives in:
 - [web-runtime.md](web-runtime.md) for the browser runtime;
 - [scanners.md](scanners.md) for how detection works.
 
+Short on time? `llm-localizator localize-project --locales pl` prints steps 3 and 4 as one report (scan,
+missing keys, cost, next commands) and changes nothing; add `--submit` to enqueue the translation.
+
 ## 1. Start: config and approach
 
 - [ ] `llm-localizator onboard <app> --targets pl --frozen zh,ar` does the steps below in one go, or:
@@ -72,6 +75,32 @@ llm-localizator hardcoded-hunt <project> --serve    # starts the app from [qa] s
       `validate` (ADR-19).
 - [ ] Held drafts (under `[quality] write_floor`, or not better than the current
       text): review them in the editor.
+
+### Translating with Claude Haiku (cloud)
+
+- [ ] Set `[provider] kind = "anthropic"`, `[privacy] allow_cloud = true`,
+      `[locales.models] default = "claude-haiku-5-5"` and a `[budget] monthly_usd`
+      above 0. The key comes only from the `ANTHROPIC_API_KEY` environment variable
+      ([how to set it](configuration.md#setting-an-api-key)).
+- [ ] `estimate-cost --locales <list>` first. It prices only keys the tool considers
+      due, and needs no API call.
+- [ ] **Existing translations without recorded state.** A project that already has
+      catalogues but no engine state reports every key as `missing`, and a plain
+      `translate` would re-translate (and overwrite) all of them. Compare the target
+      catalogue with `en.json` and pass only the absent keys with
+      `translate --locales <l> --keys <ns.key,...>` (a flat catalogue uses the empty
+      namespace, so keys read `.a.b`). `--dry-run` with the same `--keys` must show
+      the count you expect before you spend.
+- [ ] **Command-line length.** About 2,000 keys do not fit one Windows command line:
+      pass them in chunks of about 400.
+- [ ] **Speed.** Haiku runs batches of `[translate] cloud_batch_size` (default 50) keys
+      per request, sent through the Message Batches API (`[budget] cloud_batch`,
+      about half price). That API is asynchronous, so expect roughly 10 to 15 minutes
+      per 400 keys plus a scoring pass, not seconds. Set `cloud_batch = false` for
+      faster synchronous calls at full price.
+- [ ] Frozen locales (zh, ar layout checks) run only when named in `--locales`.
+- [ ] Afterwards: `validate`, then check that no error falls on the keys you just
+      translated (older errors in existing translations are a separate backlog).
 
 ## 5. Review and ship
 

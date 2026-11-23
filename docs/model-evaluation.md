@@ -7,11 +7,9 @@ checklist before changing `[locales.models]`, `[locales.roles]`, or
 Policy: [ADR-12](decisions/ADR-12-local-model-bakeoff-defaults.md)
 (gates) · [ADR-23](decisions/ADR-23-prompt-families.md) (stripped vs
 consumer) · [ADR-22](decisions/ADR-22-tm-and-ctranslate2.md) (CT2/VRAM).
-Runner: `llm-localizator bakeoff` ([cli.md](cli.md#bakeoff--run-bakeoff)). The older
-[`experiments/quality_bakeoff/run_bakeoff.py`](../experiments/quality_bakeoff/run_bakeoff.py)
-still works and is the one that supports the CTranslate2 track.
-Latest evidence: [`experiments/quality_bakeoff/REPORT.md`](../experiments/quality_bakeoff/REPORT.md).
-Coverage index: [`experiments/quality_bakeoff/LEDGER.md`](../experiments/quality_bakeoff/LEDGER.md).
+Runner: `llm-localizator bakeoff` / `run-bakeoff` ([cli.md](cli.md#bakeoff--run-bakeoff)).
+Reports and the coverage ledger land in `--out` (default: the project state
+dir under `bakeoff/`).
 
 ## 1. Triggers
 
@@ -41,10 +39,12 @@ Pinned comparison set (matrix default):
 - `translategemma:4b`
 - `llama3.2`
 
-**CTranslate2 / MADLAD** is not an Ollama bakeoff tag. Install under
-`--ct2-path` / `[provider] model_path`. Do **not** co-resident a heavy Ollama
-load and MADLAD on 6 GB VRAM (ADR-22). Unload Ollama first:
-`ollama stop <tag>` (or wait for keep-alive expiry).
+**CTranslate2 / MADLAD** is not an Ollama bakeoff tag. The public
+`bakeoff` / `run-bakeoff` commands compare **local Ollama models only**.
+Install CT2 under `--ct2-path` / `[provider] model_path` for production use,
+but do **not** co-resident a heavy Ollama load and MADLAD on 6 GB VRAM
+(ADR-22). Unload Ollama first: `ollama stop <tag>` (or wait for keep-alive
+expiry).
 
 ## 4. Preferred: full matrix (quality + speed)
 
@@ -53,12 +53,12 @@ into JSONL + `LEDGER.md`. Standard cells per model:
 
 ```bash
 llm-localizator bakeoff --matrix --locales pl --models qwen2.5:7b --dry-run
-llm-localizator run-bakeoff --matrix --locales pl --models qwen2.5:7b --out experiments/quality_bakeoff
+llm-localizator run-bakeoff --matrix --locales pl --models qwen2.5:7b
 ```
 
-The command adds the locale's current model to every run, samples your own strings evenly
-across UI roles, and appends a dated section to `REPORT.md` without touching the Winners
-table. The script below does the same and adds the CTranslate2 track.
+The command adds the locale's current model to every run, samples your own
+strings evenly across UI roles, and appends a dated section to `REPORT.md`
+without touching the Winners table.
 
 | prompt_mode | family |
 |-------------|--------|
@@ -66,49 +66,28 @@ table. The script below does the same and adds the CTranslate2 track.
 | consumer | chat |
 | consumer | mt_chat |
 
-```bash
-.venv/Scripts/python.exe experiments/quality_bakeoff/run_bakeoff.py \
-  --matrix --locales pl \
-  --config <path/to/consumer-or-dogfood/.llm-localize.toml> \
-  --write-ledger
-```
-
-Optional MADLAD after unloading Ollama:
-
-```bash
-.venv/Scripts/python.exe experiments/quality_bakeoff/run_bakeoff.py \
-  --matrix --locales pl --config <toml> --write-ledger \
-  --ct2-path D:\models\madlad400-3b-ct2
-```
-
 Expand languages later: `--locales pl,ar,de,…`. LEDGER “Coverage by locale”
-shows which model×locale cells exist.
+shows which model×locale cells exist. Point `--out` at a durable folder if you
+want to keep reports across machines.
 
 Ctrl-C / `tq stop` is safe: JSONL flushes per **cell**; retry the same task
 and finished cells are **skipped** (checkpoint). Use `--force-cells` to redo.
-Progress lines use taskqueue’s `(N%)` form, e.g.
-`[3/12] aya-expanse:8b pl [consumer/chat] key 10/76 amb.board (22.5%)`,
-plus `TQ_METRIC` and 45s heartbeats so hung detection stays quiet during long
-LLM calls. Per-locale queue tasks:
-`experiments/operator_queue/quality_bakeoff_matrix_{pl,ar,de,fr,it,nl,pt_PT,pt_BR,cs,es,ru,tr,ko,th,vi}.yaml`
-(bridge target locales). Full roster completed 2026-08-30 — see REPORT Winner
-table before editing consumer `[locales.models]`.
+Progress lines use taskqueue’s `(N%)` form when queued.
 
 ## 5. Lighter dual-track (two models)
 
 ```bash
-.venv/Scripts/python.exe experiments/quality_bakeoff/run_bakeoff.py \
-  --prompt-mode both \
-  --config <path/to/consumer-or-dogfood/.llm-localize.toml> \
+llm-localizator run-bakeoff \
+  --locales pl \
   --models <incumbent>,<candidate> \
-  --locales pl
+  --family both
 ```
 
 | Track | Meaning |
 |-------|---------|
 | `stripped` | Raw fluency (SaaS domain, empty glossary). Fine for smoke. |
 | `consumer` | Production-like domain / glossary / key / context. **Winner ranking.** |
-| `both` | Two tables. |
+| `both` / `--matrix` | Several prompt cells; prefer consumer for swaps. |
 
 Stripped-only must **not** drive model swaps (ADR-23).
 
@@ -127,12 +106,12 @@ as secondary, but primary TOML swaps need consumer quality.
 
 Record in `REPORT.md` at least:
 
-- one `amb.*` key (sense / polysemy)
-- one `long.*` string
-- one account / destructive UI string (e.g. `acct.deleteTitle`)
+- one ambiguous / polysemous UI string
+- one long string
+- one account / destructive UI string
 
-If consumer sense is still wrong on `amb.*`, try step 8 before discarding the
-candidate.
+If consumer sense is still wrong on ambiguous keys, try step 8 before discarding
+the candidate.
 
 ## 8. Prompt family A/B
 
@@ -148,7 +127,9 @@ ignores instruction text — family does not apply.
 1. Write / keep a **Winner** note in `REPORT.md` dated after the candidate was
    considered (locale + track + mean + speed).
 2. Only then edit `[locales.models]`, `[locales.roles]`, or
-   `[quality] judge_model`.
+   `[quality] judge_model`. Or print a snippet with
+   `llm-localizator bakeoff --propose-config` (reads the Winners table; writes
+   nothing).
 3. Role shapes: [examples/locale-roles.md](examples/locale-roles.md).
 4. If the candidate does not win on consumer quality (or fails spot-check),
    keep defaults and journal only. LEDGER still records the run.
@@ -178,12 +159,12 @@ Record in REPORT / LEDGER (by locale, content type, model, prompt/context versio
 | Review / retranslate rate | From improve flags + review |
 | Latency, keys/s, tokens | Privacy class stays local-first |
 
-Gold-set calibration (publish/review/retranslate P/R) lives under
-[`experiments/quality_bakeoff/gold/`](../experiments/quality_bakeoff/gold/) — expand
-before treating judge thresholds as measured.
+Gold-set calibration (publish/review/retranslate P/R) is a maintainer
+exercise: expand a labelled set before treating judge thresholds as measured.
 
 ## Non-goals
 
 - Auto-switching models on reject
 - Per-Ollama-tag prompt files
-- Evaluating CT2 via Ollama `--models` (use `--ct2-path` instead)
+- Evaluating CT2 via Ollama `--models` (CT2 is outside the public bakeoff
+  matrix; use `[provider]` / `--ct2-path` for production)

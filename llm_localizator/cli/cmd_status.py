@@ -39,7 +39,10 @@ def run(args: argparse.Namespace) -> int:
         note = ""
         if row.get("namespaces_missing"):
             note = f"{row['namespaces_missing']} namespace file(s) absent"
-        if row.get("total") and row.get("translated") == 0:
+        if row.get("no_record"):
+            hint = f"{row['no_record']} have text but no record (run `adopt`)"
+            note = f"{note}; {hint}" if note else hint
+        if row.get("total") and row.get("translated") == 0 and not row.get("no_record"):
             note = ("never translated" + (f"; {note}" if note else ""))
         cov = row.get("coverage", 0.0)
         print(

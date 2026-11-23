@@ -13,10 +13,15 @@ from pathlib import Path
 from .base import ScanResult, relative_posix
 from .views import MarkupView, blank, blank_match, scan_markup_view
 
-__all__ = ["ENGINE_BY_SUFFIX", "template_markup", "scan_template_file", "scan_text_template"]
+__all__ = ["ENGINE_BY_SUFFIX", "TEXT_RESOURCE_DIRS", "template_markup", "scan_template_file", "scan_text_template"]
+
+#: A ``.txt`` file is read only inside one of these folders: ``templates`` (Jinja plain-text bodies) or a folder of
+#: user-facing text resources (``res/text/tooltip.txt``, ``strings/``, ``help/``).
+TEXT_RESOURCE_DIRS = frozenset({"templates", "text", "texts", "strings", "messages", "help", "tooltips"})
 
 ENGINE_BY_SUFFIX = {
     ".erb": "erb", ".ejs": "erb", ".jsp": "erb", ".gsp": "erb",
+    ".heex": "heex", ".leex": "heex", ".eex": "heex",
     ".hbs": "mustache", ".handlebars": "mustache", ".mustache": "mustache",
     ".twig": "jinja", ".jinja": "jinja", ".jinja2": "jinja", ".j2": "jinja", ".njk": "jinja", ".liquid": "jinja",
     ".gohtml": "gotmpl", ".tmpl": "gotmpl", ".tpl": "gotmpl",
@@ -42,6 +47,14 @@ def _erb(text: str) -> str:
     text = _sub(r"<%[=-]{1,2}.*?-?%>", text, _slot_m)  # output tags
     text = _sub(r"<%.*?-?%>", text, _blank_m)          # code tags
     return _sub(r"\$\{[^{}\n]*\}", text, _slot_m)      # JSP/EL
+
+
+def _heex(text: str) -> str:
+    """Phoenix HEEx/EEx: EEx tags like ERB (``<%!-- --%>`` comments), and ``{expr}`` interpolation in text and attributes."""
+    text = _sub(r"<%!--.*?--%>|<%#.*?%>", text, _blank_m)
+    text = _sub(r"<%[=-]{1,2}.*?-?%>", text, _slot_m)
+    text = _sub(r"<%.*?-?%>", text, _blank_m)
+    return _sub(r"\{[^{}\n]{0,300}\}", text, _slot_m)
 
 
 def _mustache(text: str) -> str:
@@ -139,7 +152,7 @@ def _freemarker(text: str) -> str:
 
 
 _ENGINES = {
-    "blade": _blade, "erb": _erb, "mustache": _mustache, "jinja": _jinja, "gotmpl": _gotmpl, "razor": _razor, "freemarker": _freemarker,
+    "blade": _blade, "erb": _erb, "heex": _heex, "mustache": _mustache, "jinja": _jinja, "gotmpl": _gotmpl, "razor": _razor, "freemarker": _freemarker,
 }
 
 
@@ -160,6 +173,40 @@ def scan_template_file(raw_scanner, path: Path, lines: list[str], result: ScanRe
         scan_markup_view(raw_scanner, rel, template_markup(text, engine), result)
     if path.suffix.lower() == ".erb":
         _scan_erb_ruby(raw_scanner, rel, text, result)
+    elif engine == "jinja":
+        scan_macro_call_text(rel, text, result)
+
+
+_MACRO_CALL = re.compile(r"\{\{-?\s*(?P<name>[A-Za-z_][\w.]*)\s*\((?P<args>.{0,600}?)\)\s*-?\}\}", re.S)
+_MACRO_STRING = re.compile(r"""(?:\b(?P<kw>[A-Za-z_]+)\s*=\s*)?(?P<q>["'])(?P<text>[^"'\n]{2,120})(?P=q)""")
+#: Template functions whose string arguments are paths, ids or format strings, not captions.
+_MACRO_SKIP = frozenset({
+    "url_for", "static", "asset", "include", "range", "dict", "gettext", "_", "ngettext", "lazy_gettext", "trans",
+    "format", "join", "default", "tojson", "url", "path", "route", "csrf_token", "load", "cycler", "namespace",
+})
+
+
+def scan_macro_call_text(rel: str, text: str, result: ScanResult) -> None:
+    """Captions passed to a template macro: ``{{ web_button("stop-button", "Stop", placeholder="Name") }}``.
+
+    A string argument that starts with a capital letter and holds a word is a caption; ids (``"stop-button"``), paths and
+    URLs are not. The macro's own body only prints ``{{ label }}``, so the caption is written at the call site.
+    """
+    from .base import HardcodedString
+
+    for call in _MACRO_CALL.finditer(text):
+        if call.group("name").split(".")[-1] in _MACRO_SKIP:
+            continue
+        args_start = call.start("args")
+        for arg in _MACRO_STRING.finditer(call.group("args")):
+            value = " ".join(arg.group("text").split())
+            if not value[:1].isupper() or "/" in value or "://" in value or not re.search(r"[^\W\d_]{3,}", value):
+                continue
+            line = text.count("\n", 0, args_start + arg.start("text")) + 1
+            result.hardcoded.append(HardcodedString(
+                value, rel, line, reason="text passed to a template macro; route it through the catalogue",
+                confidence="medium",
+            ))
 
 
 _JINJA_TAG = re.compile(r"\{\{.*?\}\}|\{%.*?%\}")
@@ -168,9 +215,12 @@ _JINJA_TAG = re.compile(r"\{\{.*?\}\}|\{%.*?%\}")
 def scan_text_template(scanner, path: Path, lines: list[str], result: ScanResult) -> None:
     """``templates/emails/report.txt``: a Jinja plain-text body (pool E: critiquebrainz). Needs a ``{{ }}``/``{% %}`` tag."""
     text = "\n".join(lines)
-    if not _JINJA_TAG.search(text):
-        return
     rel = relative_posix(path, scanner.root)
+    if not _JINJA_TAG.search(text):
+        # A text resource (``res/text/tooltip.txt``): prose lines are judged like Markdown.
+        if {part.lower() for part in path.parts[:-1]} & (TEXT_RESOURCE_DIRS - {"templates"}):
+            _scan_plain_template(rel, text, result)
+        return
     _scan_plain_template(rel, template_markup(text, "jinja"), result)
 
 

@@ -121,7 +121,7 @@ def test_refresh_sidecars_picks_up_cli_adopt(tmp_path: Path) -> None:
     st = build_state(load_config(tmp_path / ".llm-localize.toml"))
 
     before = overview_stats(st)["locales"][0]
-    assert before["missing"] == 1
+    assert before["missing"] + before.get("no_record", 0) == 1
     assert before["translated"] == 0
 
     # Out-of-band adopt (same as CLI): writes disk, does not touch st.store cache.
@@ -129,7 +129,8 @@ def test_refresh_sidecars_picks_up_cli_adopt(tmp_path: Path) -> None:
     assert result.data["adopted"] == 1
 
     # Still stale until refresh — in-memory store predates the write.
-    assert overview_stats(st)["locales"][0]["missing"] == 1
+    row = overview_stats(st)["locales"][0]
+    assert row["missing"] + row.get("no_record", 0) == 1
 
     refresh_sidecars_from_disk(st)
     after = overview_stats(st)["locales"][0]
@@ -271,6 +272,7 @@ def test_load_primary_state_only(tmp_path: Path) -> None:
     assert list(states) == ["demo"]
 
 
+@pytest.mark.slow
 def test_10k_index_pagination(tmp_path: Path) -> None:
     keys = {f"k{i:05d}": f"Source {i}" for i in range(10_000)}
     (tmp_path / ".llm-localize.toml").write_text(CONFIG, encoding="utf-8")

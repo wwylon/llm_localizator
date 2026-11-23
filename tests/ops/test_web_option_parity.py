@@ -38,6 +38,8 @@ _WEB_IGNORED = {
     ("import", "report"): "writes a report file next to the CLI; the web shows the result inline",
     ("translate", "manifest"): "the CLI reads the manifest file into keys; the web sends keys",
     ("run-translate", "manifest"): "the CLI reads the manifest file into keys; the web sends keys",
+    ("translate", "keys_file"): "the CLI reads the file into keys; the web sends keys",
+    ("run-translate", "keys_file"): "the CLI reads the file into keys; the web sends keys",
     ("translate", "ignore_min_keys"): "worker-side guard override, set per queued task",
     ("run-translate", "ignore_min_keys"): "worker-side guard override, set per queued task",
     ("term-report", "json"): "terminal output style",

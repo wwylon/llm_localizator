@@ -738,7 +738,7 @@
     window.localePicker(localeCatalog(), taken, function (locale, done) {
       post("/api/add-locale", { project: currentProject || select.value, locale: locale })
         .then(function (data) {
-          if (!data.ok) throw new Error(data.error || "add locale failed");
+          if (!data.ok) throw new Error(data.error || uiT("dash_add_locale_failed", "Could not add the locale"));
           done(null);
           load(currentProject || select.value);
         })

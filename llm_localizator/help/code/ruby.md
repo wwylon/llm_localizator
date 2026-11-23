@@ -4,7 +4,7 @@
 | Scanner language | Tier |
 |---|---|
 | `ruby` | basic |
-| `erb` | basic |
+| `erb` | supported |
 
 Calls that show text to a person (a literal given to one is reported at medium or high confidence): `flash[:notice] =`, `render json:`, `.errors.add(`, `notice:`, `alert:`.
 

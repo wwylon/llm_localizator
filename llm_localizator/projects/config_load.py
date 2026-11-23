@@ -583,6 +583,7 @@ def _parse_providers(raw: dict, provider_raw: dict, path: Path):
                 timeout_single_s=merged.timeout_single_s,
                 timeout_shorten_s=merged.timeout_shorten_s,
                 model_path=merged.model_path or "",
+                api_key_env=merged.api_key_env or "",
             )
     legacy_provider = _provider_config_from_raw(provider_raw)
     if "default" not in named_providers:
@@ -624,9 +625,9 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "locales": frozenset({"asap", "fallbacks", "frozen", "length_sensitive", "models", "pivots", "prompt_family", "providers", "roles", "targets"}),
     "prompt": frozenset({"audience", "catalogue_semantic", "context_dir", "description", "domain", "examples_file", "family", "glossary", "glossary_conflict", "glossary_domains", "glossary_shared", "localize", "models", "register", "style_preset", "style_presets", "styles", "tm_dir", "tm_semantic", "tm_shared", "tm_write"}),
     "state": frozenset({"dir", "flags", "history", "scores"}),
-    "scan": frozenset({"adapter", "content_globs", "directive_aliases", "exclude", "out_dir", "server_dirs", "src_dirs", "t_functions", "unskip", "unused_allow"}),
+    "scan": frozenset({"adapter", "content_globs", "directive_aliases", "exclude", "out_dir", "server_dirs", "src_dirs", "surfaces", "t_functions", "unskip", "unused_allow"}),
     "documents": frozenset({"dir", "model", "state_dir"}),
-    "quality": frozenset({"band_approve", "band_flag", "band_retranslate", "bt_batch_size", "catalogue_semantic", "defer_scoring", "high_risk_patterns", "improve_limit", "improve_model", "improve_multi_sample", "improve_reject_cooldown_hours", "improve_skip_rejected", "judge_model", "judge_risky", "length_sensitive", "multi_sample", "score_model", "score_provider", "threshold", "thresholds", "tiers", "tm_semantic", "vision_model", "write_floor"}),
+    "quality": frozenset({"band_approve", "band_flag", "band_retranslate", "bt_batch_size", "bt_cloud_batch_size", "bt_workers", "catalogue_semantic", "defer_scoring", "high_risk_patterns", "improve_limit", "improve_model", "improve_multi_sample", "improve_reject_cooldown_hours", "improve_skip_rejected", "judge_model", "judge_risky", "length_sensitive", "multi_sample", "score_model", "score_provider", "threshold", "thresholds", "tiers", "tm_semantic", "vision_model", "write_floor"}),
     "budget": frozenset({"cloud_batch", "mode", "monthly_usd", "output_expansion", "rates", "thinking_tokens"}),
     "gather": frozenset({"auto_stub"}),
     "translate": frozenset({"approach", "batch_size", "cloud_batch_size", "enabled", "history_compact_every", "max_consecutive_rejects", "min_keys", "short_batch", "soft_retry"}),
@@ -777,8 +778,34 @@ def _scan_kwargs(scan: dict, data_base: Path, engine_scan_default: str | None, p
         "scan_content_globs": _string_list("content_globs", scan.get("content_globs"), path, "scan"),
         "scan_directive_aliases": _bool("directive_aliases", scan.get("directive_aliases"), True, path, "scan"),
         "scan_unused_allow": _string_list("unused_allow", scan.get("unused_allow"), path, "scan"),
+        "scan_surfaces": _scan_surfaces(scan.get("surfaces"), path),
         "scan_out_dir": _sidecar_path(data_base, scan.get("out_dir"), engine_scan_default),
     }
+
+
+_SURFACE_MODES = ("fix", "report", "ignore")
+
+
+def _scan_surfaces(raw: object, path: Path) -> dict[str, dict]:
+    """``[scan.surfaces.<name>]`` tables: ``paths`` (globs) and ``mode``."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: [scan.surfaces] must be a table of tables")
+    out: dict[str, dict] = {}
+    for name, row in raw.items():
+        if not isinstance(row, dict):
+            raise ConfigError(f"{path}: [scan.surfaces.{name}] must be a table")
+        _reject_unknown(f"scan.surfaces.{name}", row, {"paths", "mode"}, path)
+        mode = str(row.get("mode", "fix"))
+        if mode not in _SURFACE_MODES:
+            raise ConfigError(
+                f"{path}: [scan.surfaces.{name}] mode must be one of {', '.join(_SURFACE_MODES)}, got {mode!r}")
+        paths = _string_list("paths", row.get("paths"), path, f"scan.surfaces.{name}")
+        if not paths:
+            raise ConfigError(f"{path}: [scan.surfaces.{name}] needs paths = [...]")
+        out[str(name)] = {"paths": paths, "mode": mode}
+    return out
 
 
 def _quality_translate_kwargs(quality: dict, translate: dict, path: Path) -> dict:
@@ -800,6 +827,8 @@ def _quality_translate_kwargs(quality: dict, translate: dict, path: Path) -> dic
             bool(quality["defer_scoring"]) if quality.get("defer_scoring") is not None else None
         ),
         "bt_batch_size": max(1, int(quality.get("bt_batch_size", 5))),
+        "bt_cloud_batch_size": max(0, int(quality.get("bt_cloud_batch_size", 0))),
+        "bt_workers": max(1, int(quality.get("bt_workers", 4))),
         "vision_model": quality.get("vision_model"),
         "improve_limit": int(quality.get("improve_limit", 50)),
         "improve_skip_rejected": bool(quality.get("improve_skip_rejected", True)),

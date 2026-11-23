@@ -121,8 +121,6 @@ def test_ui_locale_dictionaries_and_fr() -> None:
         assert not orphans, f"{code}.json has keys en.json no longer has: {sorted(orphans)[:5]}"
 
 
-@pytest.mark.xfail(strict=True, reason="fr/de/ar UI catalogues lack ~1,700 keys added since W-11 (missing keys fall back to "
-                   "English); needs a translate run. Remove this mark when fr is complete.")
 def test_ui_locale_fr_is_complete() -> None:
     en = json.loads((LOCALES / "en.json").read_text(encoding="utf-8"))
     fr = json.loads((LOCALES / "fr.json").read_text(encoding="utf-8"))

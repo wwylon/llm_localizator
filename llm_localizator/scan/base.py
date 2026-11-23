@@ -176,7 +176,10 @@ def scan_file_hits(scanner, path: Path, result: "ScanResult", scan_fn=None) -> l
         return None
     result.files_scanned += 1
     before = len(result.hardcoded)
-    (scan_fn or scanner.scan_file)(path, lines, result)
+    try:
+        (scan_fn or scanner.scan_file)(path, lines, result)
+    except Exception as exc:  # noqa: BLE001 -- one file's lexer bug must not abort the whole scan
+        result.skipped.append(f"{rel}: scan error ({type(exc).__name__})")
     hits = result.hardcoded[before:]
     if hits and getattr(scanner, "apply_directives", True):
         from .directives import apply_directives

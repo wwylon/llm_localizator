@@ -40,6 +40,7 @@ def test_import_refuses_hard_defects(tmp_path, defect) -> None:
     assert import_outcome(tmp_path, defect) == "rejected", f"{defect.id} was accepted by import"
 
 
+@pytest.mark.slow
 def test_ratchet_never_gets_worse(tmp_path) -> None:
     now = compute(tmp_path)
     assert now["detected"] == now["defects"], f"missed: {now['missed']}"

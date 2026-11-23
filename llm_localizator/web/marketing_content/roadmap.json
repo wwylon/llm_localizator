@@ -26,7 +26,7 @@
       "id": "scanner-supported",
       "area": "Scanner",
       "title": "Supported tier for web and UI files.",
-      "detail": "JavaScript, TSX, HTML, Vue, Svelte, Astro, XML UI files and Godot scenes pass the held-out bar.",
+      "detail": "JavaScript, TSX, HTML, Vue, Svelte, Astro, ERB, XML UI files and Godot scenes pass the held-out bar.",
       "status": "done"
     },
     {
@@ -54,7 +54,7 @@
       "id": "launch-repo",
       "area": "Launch",
       "title": "Public repository and website.",
-      "detail": "Source on GitHub and this site at llm-localizator.dev.",
+      "detail": "Source on GitHub and this site on GitHub Pages.",
       "status": "in-progress"
     },
     {

@@ -1,13 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 380" role="img" aria-label="Scanner precision and recall on 12 held-out projects" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">
-<rect width="720" height="380" rx="14" fill="#0B1B33"/>
-<text x="28" y="40" font-size="20" font-weight="700" fill="#FFFFFF">Hardcoded-string scanner on 12 unseen projects</text>
-<text x="28" y="62" font-size="13" fill="#A9B8CF">Labelled by blind agents that never saw scanner output; scored once.</text>
-<text x="28" y="114" font-size="14" fill="#E6EEF9">Precision (macro)</text><rect x="210" y="96" width="420" height="26" rx="5" fill="#16294A"/><rect x="210" y="96" width="382" height="26" rx="5" fill="#2E7D5B"/><text x="602" y="114" font-size="14" font-weight="700" fill="#FFFFFF">0.91</text>
-<text x="28" y="154" font-size="14" fill="#E6EEF9">Recall (macro)</text><rect x="210" y="136" width="420" height="26" rx="5" fill="#16294A"/><rect x="210" y="136" width="143" height="26" rx="5" fill="#5B9BD5"/><text x="363" y="154" font-size="14" font-weight="700" fill="#FFFFFF">0.34</text>
-<text x="28" y="198" font-size="13" font-weight="700" fill="#F5B82E">Recall by where the text lives</text>
-<text x="28" y="227" font-size="13" fill="#E6EEF9">Code</text><rect x="210" y="212" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="212" width="227" height="20" rx="4" fill="#5B9BD5"/><text x="447" y="227" font-size="13" fill="#FFFFFF">0.54</text>
-<text x="28" y="255" font-size="13" fill="#E6EEF9">Templates</text><rect x="210" y="240" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="240" width="244" height="20" rx="4" fill="#5B9BD5"/><text x="464" y="255" font-size="13" fill="#FFFFFF">0.58</text>
-<text x="28" y="283" font-size="13" fill="#E6EEF9">UI-definition files</text><rect x="210" y="268" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="268" width="134" height="20" rx="4" fill="#5B9BD5"/><text x="354" y="283" font-size="13" fill="#FFFFFF">0.32</text>
-<text x="28" y="311" font-size="13" fill="#E6EEF9">Manifests</text><rect x="210" y="296" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="296" width="67" height="20" rx="4" fill="#5B9BD5"/><text x="287" y="311" font-size="13" fill="#FFFFFF">0.16</text>
-<text x="28" y="339" font-size="13" fill="#E6EEF9">Content (md, yaml)</text><rect x="210" y="324" width="420" height="20" rx="4" fill="#16294A"/><rect x="210" y="324" width="0" height="20" rx="4" fill="#5B9BD5"/><text x="220" y="339" font-size="13" fill="#FFFFFF">0.00</text>
-<text x="28" y="374" font-size="12" fill="#A9B8CF">When it flags a string, it is usually right. It still misses about two thirds of the text, so treat the output as a worklist.</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 684" role="img" aria-label="Scanner precision and recall on the seven latest held-out rounds" font-family="system-ui,Segoe UI,Roboto,Arial,sans-serif">
+<rect width="720" height="684" rx="14" fill="#0B1B33"/>
+<text x="28" y="40" font-size="20" font-weight="700" fill="#FFFFFF">Hardcoded-string scanner on 136 unseen projects</text>
+<text x="28" y="62" font-size="13" fill="#A9B8CF">Seven held-out rounds, scanner v57 to v67. Labelled blind by agents that never saw scanner output; each scored once.</text>
+<rect x="400" y="86" width="12" height="12" rx="2" fill="#2E7D5B"/><text x="418" y="97" font-size="12" fill="#E6EEF9">Precision</text><rect x="500" y="86" width="12" height="12" rx="2" fill="#5B9BD5"/><text x="518" y="97" font-size="12" fill="#E6EEF9">Recall</text>
+<text x="28" y="138" font-size="14" fill="#E6EEF9">Pool F · 30 projects</text>
+<rect x="200" y="116" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="116" width="286" height="22" rx="4" fill="#2E7D5B"/><text x="496" y="132" font-size="13" font-weight="700" fill="#FFFFFF">0.65</text>
+<rect x="200" y="144" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="144" width="260" height="22" rx="4" fill="#5B9BD5"/><text x="470" y="160" font-size="13" font-weight="700" fill="#FFFFFF">0.59</text>
+<text x="28" y="206" font-size="14" fill="#E6EEF9">Pool G · 19 projects</text>
+<rect x="200" y="184" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="184" width="308" height="22" rx="4" fill="#2E7D5B"/><text x="518" y="200" font-size="13" font-weight="700" fill="#FFFFFF">0.70</text>
+<rect x="200" y="212" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="212" width="295" height="22" rx="4" fill="#5B9BD5"/><text x="505" y="228" font-size="13" font-weight="700" fill="#FFFFFF">0.67</text>
+<text x="28" y="274" font-size="14" fill="#E6EEF9">Pool H · 21 projects</text>
+<rect x="200" y="252" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="252" width="330" height="22" rx="4" fill="#2E7D5B"/><text x="540" y="268" font-size="13" font-weight="700" fill="#FFFFFF">0.75</text>
+<rect x="200" y="280" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="280" width="260" height="22" rx="4" fill="#5B9BD5"/><text x="470" y="296" font-size="13" font-weight="700" fill="#FFFFFF">0.59</text>
+<text x="28" y="342" font-size="14" fill="#E6EEF9">Pool I · 19 projects</text>
+<rect x="200" y="320" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="320" width="352" height="22" rx="4" fill="#2E7D5B"/><text x="562" y="336" font-size="13" font-weight="700" fill="#FFFFFF">0.80</text>
+<rect x="200" y="348" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="348" width="299" height="22" rx="4" fill="#5B9BD5"/><text x="509" y="364" font-size="13" font-weight="700" fill="#FFFFFF">0.68</text>
+<text x="28" y="410" font-size="14" fill="#E6EEF9">Pool J · 14 projects</text>
+<rect x="200" y="388" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="388" width="370" height="22" rx="4" fill="#2E7D5B"/><text x="580" y="404" font-size="13" font-weight="700" fill="#FFFFFF">0.84</text>
+<rect x="200" y="416" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="416" width="207" height="22" rx="4" fill="#5B9BD5"/><text x="417" y="432" font-size="13" font-weight="700" fill="#FFFFFF">0.47</text>
+<text x="28" y="478" font-size="14" fill="#E6EEF9">Pool K · 16 projects</text>
+<rect x="200" y="456" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="456" width="348" height="22" rx="4" fill="#2E7D5B"/><text x="558" y="472" font-size="13" font-weight="700" fill="#FFFFFF">0.79</text>
+<rect x="200" y="484" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="484" width="224" height="22" rx="4" fill="#5B9BD5"/><text x="434" y="500" font-size="13" font-weight="700" fill="#FFFFFF">0.51</text>
+<text x="28" y="546" font-size="14" fill="#E6EEF9">Pool L · 17 projects</text>
+<rect x="200" y="524" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="524" width="338" height="22" rx="4" fill="#2E7D5B"/><text x="548" y="540" font-size="13" font-weight="700" fill="#FFFFFF">0.77</text>
+<rect x="200" y="552" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="552" width="269" height="22" rx="4" fill="#5B9BD5"/><text x="479" y="568" font-size="13" font-weight="700" fill="#FFFFFF">0.61</text>
+<text x="28" y="614" font-size="14" fill="#E6EEF9">All seven · 136 projects</text>
+<rect x="200" y="592" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="592" width="326" height="22" rx="4" fill="#2E7D5B"/><text x="536" y="608" font-size="13" font-weight="700" fill="#FFFFFF">0.74</text>
+<rect x="200" y="620" width="440" height="22" rx="4" fill="#16294A"/><rect x="200" y="620" width="262" height="22" rx="4" fill="#5B9BD5"/><text x="472" y="636" font-size="13" font-weight="700" fill="#FFFFFF">0.59</text>
+<text x="28" y="668" font-size="12" fill="#A9B8CF">High and medium confidence hits. Precision varies from 0.12 to 1.00 by project, so treat the output as a worklist.</text></svg>

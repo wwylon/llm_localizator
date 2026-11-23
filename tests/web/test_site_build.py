@@ -119,6 +119,7 @@ def test_in_app_render_keeps_loopback_editor() -> None:
     assert "/static/app.css" in html
 
 
+@pytest.mark.slow
 def test_build_script_cli(tmp_path) -> None:
     out = tmp_path / "site"
     proc = subprocess.run(

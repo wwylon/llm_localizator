@@ -55,16 +55,16 @@ def test_engines_table_comes_from_builtin_files() -> None:
 
 def test_benchmark_is_honest_and_matches_docs() -> None:
     docs = (ROOT / "docs" / "scanners.md").read_text(encoding="utf-8")
-    assert "Macro precision 0.91, macro recall 0.34" in docs
-    assert "Twelve projects" in docs
+    assert "macro precision 0.74 and macro recall 0.59" in docs
+    assert "Twelve projects" in docs  # the v38 round stays documented
     nums = {key: num for num, key in BENCH_STATS}
-    assert nums == {"mkt_bench_precision": "0.91", "mkt_bench_projects": "12", "mkt_bench_recall": "0.34"}
+    assert nums == {"mkt_bench_precision": "0.74", "mkt_bench_projects": "136", "mkt_bench_recall": "0.59"}
     html = render_landing()
     assert 'id="benchmark"' in html
     assert "real open-source projects" in html
     assert "every hardcoded" not in html.lower()
-    # 0.34 recall means it finds about a third (docs: "finds about a third").
-    assert "finds about a third" in html
+    # 0.62 recall means about three in five (docs: "about three in five").
+    assert "about three in five" in html and "about three in five" in docs
     assert "a third of labelled text" not in html
     assert "unusual text storage" in html
 

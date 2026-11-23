@@ -70,10 +70,13 @@ def test_doctor_reports_source_key_count(project_root, make_config) -> None:
     assert "2 source key(s)" in catalog.detail
 
 
-def test_unreachable_ollama_is_fatal_only_for_an_ollama_project(
-    project_root, make_config, monkeypatch,
+def test_unreachable_ollama_is_a_warning_with_a_hint_and_fails_only_when_strict(
+    project_root, make_config, monkeypatch, capsys,
 ) -> None:
+    import argparse
+
     from llm_localizator import doctor as doctor_mod
+    from llm_localizator.cli.cmd_doctor import run
     from llm_localizator.projects.config import ProviderConfig
 
     monkeypatch.setattr(
@@ -83,10 +86,26 @@ def test_unreachable_ollama_is_fatal_only_for_an_ollama_project(
     setup_project(project_root, {"a": "A"})
     ollama = make_config(project_root, provider=ProviderConfig(kind="ollama"))
     check = _by_name(run_doctor(ollama, web_port=19999))["ollama"]
-    assert check.status == "fail"
+    assert check.status == "warn"
     assert "https://ollama.com" in check.detail
-    # No project: a machine check, so it stays a warning.
     assert _by_name(run_doctor(None, web_port=19999))["ollama"].status == "warn"
+
+    config_path = project_root / ".llm-localize.toml"
+    config_path.write_text(
+        '[project]\nname = "testproj"\n\n[catalog]\n'
+        'path = "messages/{locale}/{namespace}.json"\n\n[locales]\ntargets = ["pl"]\n',
+        encoding="utf-8",
+    )
+
+    def args(strict: bool) -> argparse.Namespace:
+        return argparse.Namespace(
+            project=None, config=config_path, port=19999,
+            skip_ollama=False, json=True, strict=strict,
+        )
+
+    assert run(args(False)) == 0
+    assert run(args(True)) == 1
+    capsys.readouterr()
 
 
 def test_doctor_hides_the_web_probe_when_no_server_runs(project_root, make_config) -> None:

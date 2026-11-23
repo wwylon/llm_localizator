@@ -224,13 +224,18 @@ def _dispatch_op_body(
             web_port=web_port,
             skip_ollama=bool(body.get("skip_ollama")),
         )
-        fails = any(c.status == "fail" for c in checks)
+        strict = bool(body.get("strict"))
+        failed = [
+            c for c in checks
+            if c.status == "fail" or (strict and c.name == "ollama" and c.status == "warn")
+        ]
+        fails = bool(failed)
         lines = [f"{c.status}: {c.name}: {c.detail}" for c in checks]
         return {
             "ok": not fails,
             "exit_code": 1 if fails else 0,
             "command": "doctor",
-            "summary": f"{len(checks)} check(s), {sum(1 for c in checks if c.status == 'fail')} fail",
+            "summary": f"{len(checks)} check(s), {len(failed)} fail",
             "lines": lines,
             "data": {"checks": [c.to_dict() for c in checks]},
         }

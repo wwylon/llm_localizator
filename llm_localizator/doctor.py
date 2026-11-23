@@ -100,12 +100,17 @@ def _loopback_closed(url: str) -> bool:
         return True
 
 
+def _fetch_json(url: str, timeout: float):
+    """GET *url* and parse the JSON body (raises on any network or parse error)."""
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
 def _ping_ollama(url: str) -> Check:
     if _loopback_closed(url):
         return Check("ollama", "warn", f"not reachable at {url}: connection refused")
     try:
-        with urllib.request.urlopen(f"{url.rstrip('/')}/api/tags", timeout=3) as resp:
-            data = json.loads(resp.read())
+        data = _fetch_json(f"{url.rstrip('/')}/api/tags", 3)
         models = [m.get("name", "") for m in data.get("models", [])]
         return Check("ollama", "ok", f"{len(models)} model(s) at {url}")
     except Exception as exc:
@@ -117,8 +122,7 @@ def _check_web(port: int, expected_digest: str, expected_version: str) -> Check:
     if _loopback_closed(base):
         return Check("web", "ok", f"no server on :{port}")
     try:
-        with urllib.request.urlopen(f"{base}/api/version", timeout=2) as resp:
-            data = json.loads(resp.read())
+        data = _fetch_json(f"{base}/api/version", 2)
         running_ver = data.get("version", "?")
         running_digest = data.get("uiDigest", "")
         if running_ver != expected_version or running_digest != expected_digest:
@@ -166,25 +170,48 @@ def _pid_listening_on(port: int) -> int | None:
     return None
 
 
-def _check_legacy_web(port: int) -> Check | None:
-    """Detect an old server that serves HTML without current UI markers."""
-    if _loopback_closed(f"http://127.0.0.1:{port}"):
-        return None
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2) as resp:
-            html = resp.read().decode("utf-8", errors="replace")
-    except Exception:
-        return None
-    if "ops-drawer" in html and "openHistory" in html:
-        return None
-    pid = _pid_listening_on(port)
-    pid_hint = f" (PID {pid})" if pid else ""
-    return Check(
-        "web",
-        "fail",
-        f"server on :{port}{pid_hint} is running an old UI (no export/history/ops) — "
-        f"stop it and restart `llm-localizator web`",
-    )
+_KEY_VARS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "deepl": "DEEPL_AUTH_KEY",
+    "openai_compat": "OPENAI_COMPAT_API_KEY",
+}
+
+
+def _dependency_checks() -> list[Check]:
+    """Packages the tool needs. Say what is missing instead of failing with a stack trace."""
+    import importlib.util
+
+    missing = [name for name, module in (("pyyaml", "yaml"), ("tomlkit", "tomlkit"))
+               if importlib.util.find_spec(module) is None]
+    if not missing:
+        return []
+    return [Check(
+        "dependencies", "fail",
+        f"missing: {', '.join(missing)}. Install the package (`pip install llm-localizator`, "
+        "`uv tool install llm-localizator`) or run it from a checkout with `uv run`.",
+    )]
+
+
+def _key_checks(cfg) -> list[Check]:
+    """Whether a cloud provider has a key. Reports the variable's name, never its value."""
+    from .providers.keys import candidate_vars, key_source
+
+    provider = getattr(cfg, "provider", None)
+    kind = (getattr(provider, "kind", "") or "").lower()
+    vendor_var = _KEY_VARS.get(kind)
+    if not vendor_var:
+        return []
+    env = getattr(provider, "api_key_env", None)
+    found = key_source(vendor_var, env)
+    if found:
+        return [Check("api-key", "ok", f"{kind}: key read from ${found}")]
+    return [Check(
+        "api-key", "warn",
+        f"{kind}: no key found; set one of {', '.join('$' + n for n in candidate_vars(vendor_var, env))} "
+        "(see docs/configuration.md, Setting an API key)",
+    )]
 
 
 def run_doctor(
@@ -195,6 +222,7 @@ def run_doctor(
 ) -> list[Check]:
     """Run health checks; ``cfg`` is optional ``ProjectConfig``."""
     checks: list[Check] = []
+    checks.extend(_dependency_checks())
     pinfo = package_info()
     digest = ui_digest()
 
@@ -229,6 +257,7 @@ def run_doctor(
 
     if cfg is not None:
         checks.append(Check("config", "ok", str(cfg.config_path or cfg.root)))
+        checks.extend(_key_checks(cfg))
         try:
             catalog = __import__(
                 "llm_localizator.catalog", fromlist=["build_catalog"]
@@ -304,8 +333,9 @@ def run_doctor(
             from .catalog import StateStore
 
             changed = StateStore(state_root).integrity_issues() if state_root.is_dir() else []
-        except Exception:
+        except Exception as exc:
             changed = []
+            checks.append(Check("state-integrity", "warn", f"could not check state: {exc}"))
         if changed:
             checks.append(Check(
                 "state-integrity", "warn",
@@ -326,11 +356,13 @@ def run_doctor(
         if not skip_ollama:
             ollama_check = _ping_ollama(cfg.provider.url)
             if ollama_check.status == "warn" and (cfg.provider.kind or "ollama") == "ollama":
-                # The project translates with Ollama, so an unreachable server is fatal.
+                # The project translates with Ollama, so say how to start it. It stays a
+                # warning: doctor is also run where no model server is up (CI, a fresh
+                # checkout). ``doctor --strict`` turns this warning into a failure.
                 from .providers.ollama import ollama_unreachable_message
 
                 ollama_check = Check(
-                    "ollama", "fail",
+                    "ollama", "warn",
                     ollama_unreachable_message(cfg.provider.url),
                 )
             checks.append(ollama_check)

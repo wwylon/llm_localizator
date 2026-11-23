@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
+
 from llm_localizator.scan.base import ScanResult, is_minified, line_number, read_source_lines
 from llm_localizator.scan.literals import _ROUTED_ARG
 from llm_localizator.scan.raw_js import RawJsScanner, _balanced_call_inner
@@ -26,6 +28,7 @@ def test_routed_arg_accepts_escaped_quote() -> None:
     assert match is not None and match.group(2) == r"don\'t save"
 
 
+@pytest.mark.slow  # wall-time gate; flakes under -n auto load (publish verify skips slow)
 def test_unbalanced_helper_calls_stay_linear(tmp_path: Path) -> None:
     src = tmp_path / "app.js"
     src.write_text("card(\"Open file\", x\n" * 2000, encoding="utf-8")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import logging
 
 from .anthropic import AnthropicProvider
@@ -11,7 +12,7 @@ from .ctranslate2 import CTranslate2Provider
 from .deepl import DeepLProvider
 from .null import NullProvider
 from .ollama import OllamaProvider
-from .openai_compat import DEEPSEEK_URL, OPENAI_URL, OpenAICompatibleProvider
+from .openai_compat import DEEPSEEK_URL, OPENAI_URL, OpenAICompatibleProvider, chat_completions_url
 
 from ..catalog.budget import BudgetStore
 from ..catalog.pricing import CLOUD_DEFAULT_MODEL, actual_usd
@@ -36,7 +37,7 @@ __all__ = [
     "complete_for",
 ]
 
-_CLOUD_KINDS = frozenset({"anthropic", "deepl", "openai", "deepseek"})
+_CLOUD_KINDS = frozenset({"anthropic", "deepl", "openai", "deepseek", "openai_compat"})
 _log = logging.getLogger(__name__)
 _OLLAMA_DEFAULTS = frozenset({
     "http://localhost:11434",
@@ -76,12 +77,13 @@ def build_provider(cfg, *, kind: str | None = None, register: str = "informal") 
             spm_model=opts.get("spm_model"),
             beam_size=int(opts.get("beam_size", 4)),
         )
+    key_env = (getattr(cfg, "api_key_env", "") or "").strip() or None
     if resolved == "anthropic":
-        return AnthropicProvider(default_model=CLOUD_DEFAULT_MODEL["anthropic"])
+        return AnthropicProvider(default_model=CLOUD_DEFAULT_MODEL["anthropic"], api_key_env=key_env)
     if resolved == "deepl":
         formality = "prefer_more" if register == "formal" else "prefer_less"
         source = getattr(cfg, "source_locale", None) or "en"
-        return DeepLProvider(formality=formality, source_locale=str(source))
+        return DeepLProvider(formality=formality, source_locale=str(source), api_key_env=key_env)
     if resolved == "openai":
         url = _compat_url(getattr(cfg, "url", ""), OPENAI_URL)
         return OpenAICompatibleProvider(
@@ -90,6 +92,7 @@ def build_provider(cfg, *, kind: str | None = None, register: str = "informal") 
             url=url,
             default_model=CLOUD_DEFAULT_MODEL["openai"],
             reasoning=True,
+            api_key_env=key_env,
         )
     if resolved == "deepseek":
         url = _compat_url(getattr(cfg, "url", ""), DEEPSEEK_URL)
@@ -99,8 +102,26 @@ def build_provider(cfg, *, kind: str | None = None, register: str = "informal") 
             url=url,
             default_model=CLOUD_DEFAULT_MODEL["deepseek"],
             disable_thinking=True,
+            api_key_env=key_env,
         )
-    known = "anthropic, ctranslate2, deepseek, deepl, null, ollama, openai"
+    if resolved == "openai_compat":
+        # Any service that speaks the OpenAI Chat Completions API (Gemini's compatibility endpoint,
+        # Mistral, Groq, OpenRouter, a self-hosted gateway...). The endpoint is required; the model comes
+        # from [locales.models] and its price from [budget.rates].
+        base = (getattr(cfg, "url", "") or "").strip()
+        if not base or base.rstrip("/") in _OLLAMA_DEFAULTS:
+            raise ValueError(
+                "provider kind 'openai_compat' needs url = \"https://host/v1\" (the OpenAI-compatible endpoint)"
+            )
+        return OpenAICompatibleProvider(
+            kind="openai_compat",
+            env_var="OPENAI_COMPAT_API_KEY",
+            url=chat_completions_url(base),
+            default_model="",
+            disable_thinking=True,
+            api_key_env=key_env,
+        )
+    known = "anthropic, ctranslate2, deepseek, deepl, null, ollama, openai, openai_compat"
     raise ValueError(f"unknown provider {resolved!r} (known: {known})")
 
 
@@ -253,14 +274,23 @@ def complete_for(project, provider: Provider, locale: str, request: CompletionRe
     return metered_complete(project, provider, locale, request)
 
 
+_SPEND_LOCK = threading.Lock()
+
+
 def metered_complete(project, provider: Provider, locale: str, request: CompletionRequest) -> str:
-    """Call ``provider.complete`` and record cloud spend when applicable."""
+    """Call ``provider.complete`` and record cloud spend when applicable.
+
+    Safe to call from several threads when each thread has its own provider object
+    (``last_usage`` is per object); the spend ledger write is serialized.
+    """
     try:
         text = provider.complete(request)
     except Exception:
         # A call can fail after the provider billed it (e.g. cut off at the
         # token limit); usage is only set once a response arrived.
-        record_provider_spend(project, provider, locale, model=request.model)
+        with _SPEND_LOCK:
+            record_provider_spend(project, provider, locale, model=request.model)
         raise
-    record_provider_spend(project, provider, locale, model=request.model)
+    with _SPEND_LOCK:
+        record_provider_spend(project, provider, locale, model=request.model)
     return text

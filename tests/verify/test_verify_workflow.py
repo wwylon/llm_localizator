@@ -95,6 +95,7 @@ def test_s6_oob_probe_passes_on_synth_project_and_restores_catalogue(tmp_path):
     assert target.read_bytes() == before
 
 
+@pytest.mark.slow
 def test_deep_profile_runs_reports_and_locale_stages(tmp_path):
     _, results = run_verify(MINI, profile="deep", locales="plurals,unprofiled", out=tmp_path)
     by_id = {r.stage: r for r in results}

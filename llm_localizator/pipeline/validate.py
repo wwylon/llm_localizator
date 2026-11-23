@@ -258,6 +258,249 @@ def _emit_term_spreads(report: ValidationReport, glossary: dict, term_rows: dict
                     ))
 
 
+@dataclass
+class _KeyChecks:
+    """What ``_check_key`` needs that does not change from key to key."""
+
+    report: "ValidationReport"
+    cfg: ProjectConfig
+    notes: ContextNotes
+    state: StateStore | None
+    tm: object
+    glossary_cache: GlossaryCache
+    diff_cache: "_CleanKeyCache | None"
+    flags_sig: str
+    term_rows: dict
+    check_expansion: bool
+    check_semantic: bool
+    check_numbers: bool
+    want_layout: bool
+    want_script: bool
+    want_digraphs: bool
+    want_length: bool
+    want_ws_fullkey: bool
+
+    @property
+    def want_any_advisory(self) -> bool:
+        return self.want_script or self.want_digraphs or self.want_length or self.want_ws_fullkey
+
+
+def _check_key(ck: _KeyChecks, standard, ns: str, key: str, src, locale: str, target: dict, path, state_entries) -> None:
+    """Every per-key check for one source key against one target locale (the body of ``run_validation``'s inner loop)."""
+    from ..core.layout_qa import check_layout as layout_check
+    from ..projects.screenshots import resolve_screenshot_path
+
+    report, cfg, notes, state, tm = ck.report, ck.cfg, ck.notes, ck.state, ck.tm
+    glossary_cache, diff_cache, flags_sig, term_rows = ck.glossary_cache, ck.diff_cache, ck.flags_sig, ck.term_rows
+    check_expansion, check_semantic, check_numbers = ck.check_expansion, ck.check_semantic, ck.check_numbers
+    want_layout, want_script, want_digraphs = ck.want_layout, ck.want_script, ck.want_digraphs
+    want_length, want_ws_fullkey, want_any_advisory = ck.want_length, ck.want_ws_fullkey, ck.want_any_advisory
+    translated = target.get(key)
+
+    if translated is None:
+        # Frozen locales are layout checks (zh, ar): a gap is expected, not a defect.
+        frozen = locale in (getattr(cfg, "frozen", None) or [])
+        report.findings.append(Finding(
+            "V01", SEVERITY_WARNING if frozen else SEVERITY_ERROR, locale, ns, key,
+            "missing from frozen layout locale" if frozen else "missing from target locale",
+            path,
+        ))
+        return
+
+    key_glossary = glossary_cache.get(
+        cfg.glossary_domains_for(
+            ns, key_domain=notes.domain(ns, key),
+        ),
+    )
+    term_rows.setdefault(locale, []).append(
+        ((ns, key, path), src, translated),
+    )
+
+    findings_before = len(report.findings)
+    fingerprint = None
+    sk = state_key(ns, key)
+    entry = state_entries.get(sk) if state_entries is not None else None
+    if diff_cache is not None:
+        fingerprint = _key_fingerprint(
+            src, translated, key_glossary, notes, ns, key, flags_sig,
+            entry,
+        )
+        if diff_cache.get(locale).get(sk) == fingerprint:
+            report.skipped_unchanged += 1
+            return
+
+    ok, reason = validate_translation(
+        src, translated, locale, key_glossary, standard=standard,
+        prompt_text=getattr(cfg, "domain", None) or None,
+    )
+    if not ok:
+        report.findings.append(Finding(
+            _classify(reason), SEVERITY_ERROR, locale, ns, key, reason, path,
+        ))
+
+    # V13 -- advisory glossary issues, reported separately from the
+    # blocking ones already covered by validate_translation.
+    for issue in glossary_violations(src, translated, key_glossary, locale):
+        if not issue.blocking:
+            report.findings.append(Finding(
+                "V13", SEVERITY_WARNING, locale, ns, key, issue.message, path,
+            ))
+
+    # V26 -- live text diverges from a high-score TM exact hit.
+    context_parts = [notes.note(ns, key)]
+    context = "; ".join(p for p in context_parts if p)
+    tm_hit = tm.exact(locale, src, context=context)
+    if (
+        tm_hit
+        and tm_hit.text.strip()
+        and tm_hit.text.strip() != translated.strip()
+        and (tm_hit.quality_score is None or tm_hit.quality_score >= 0.80)
+    ):
+        report.findings.append(Finding(
+            "V26", SEVERITY_WARNING, locale, ns, key,
+            "translation differs from high-score TM exact match",
+            path,
+        ))
+
+    if translated == src and src.strip():
+        if not entry or entry.get("status") != "intentional":
+            report.findings.append(Finding(
+                "V06", SEVERITY_WARNING, locale, ns, key,
+                "identical to source (untranslated?)", path,
+            ))
+
+    budget = check_max_chars(translated, notes.max_chars(ns, key))
+    if budget:
+        report.findings.append(Finding(
+            "V09", SEVERITY_WARNING, locale, ns, key, budget, path,
+        ))
+
+    if check_expansion:
+        band = check_expansion_band(src, translated, locale)
+        if band:
+            report.findings.append(Finding(
+                "V14", SEVERITY_WARNING, locale, ns, key, band, path,
+            ))
+
+    typography = check_locale_typography(translated, locale)
+    if typography:
+        report.findings.append(Finding(
+            "V34", SEVERITY_WARNING, locale, ns, key, typography, path,
+        ))
+
+    grammar = check_locale_grammar(translated, locale)
+    if grammar:
+        report.findings.append(Finding(
+            "V45", SEVERITY_WARNING, locale, ns, key, grammar, path,
+        ))
+
+    dnt_issue = check_dnt_spans(src, translated)
+    if dnt_issue:
+        report.findings.append(Finding(
+            "V42", SEVERITY_WARNING, locale, ns, key, dnt_issue, path,
+        ))
+
+    eff_register, _ = cfg.style_for(locale)
+    if cfg.register_set or cfg.locale_styles.get(locale, ("", ""))[0]:
+        register_hint = check_register(translated, locale, eff_register)
+        if register_hint:
+            report.findings.append(Finding(
+                "V40", SEVERITY_WARNING, locale, ns, key, register_hint, path,
+            ))
+
+    if check_numbers:
+        numbers = check_number_format(src, translated, locale)
+        if numbers:
+            report.findings.append(Finding(
+                "V38", SEVERITY_WARNING, locale, ns, key, numbers, path,
+            ))
+
+    if want_layout:
+        shot = resolve_screenshot_path(
+            cfg.context_dir,
+            screen=notes.screen(ns, key),
+            image=notes.image(ns, key),
+            locale=locale,
+        )
+        if shot is not None:
+            for issue in layout_check(
+                src,
+                translated,
+                locale,
+                max_chars=notes.max_chars(ns, key),
+                screenshot=shot,
+            ):
+                report.findings.append(Finding(
+                    "V28",
+                    SEVERITY_WARNING,
+                    locale,
+                    ns,
+                    key,
+                    f"{issue.code}: {issue.message}",
+                    path,
+                ))
+
+    if want_any_advisory:
+        fk_name = notes.full_key(ns, key)
+        fk_val = target.get(fk_name) if fk_name else None
+        _, advisory = validate_translation_detailed(
+            src, translated, locale, key_glossary,
+            max_chars=notes.max_chars(ns, key),
+            fullkey_sibling=fk_val,
+            check_whitespace=want_ws_fullkey,
+            check_script=want_script,
+            check_digraphs=want_digraphs,
+            check_max_chars_warn=want_ws_fullkey,
+            check_word_count=want_length,
+            check_fullkey=want_ws_fullkey,
+            check_untranslated=check_semantic,
+            check_typography=False,
+            standard=standard,
+        )
+        for failure in advisory:
+            if failure.severity == "error":
+                continue  # already reported via validate_translation
+            if failure.id == "V13":
+                continue  # already reported above, from the same glossary check
+            report.findings.append(Finding(
+                failure.id, SEVERITY_WARNING, locale, ns, key,
+                failure.message, path,
+            ))
+
+    if state is not None:
+        if entry is not None:
+            if needs_translation(src, entry, **notes.stale_args(ns, key)):
+                report.findings.append(Finding(
+                    "V07", SEVERITY_WARNING, locale, ns, key,
+                    "stale: source or translator context changed since translation",
+                    path,
+                ))
+            # Checked independently of V07, not nested inside it. A
+            # signature mismatch on an *unchanged* source cannot come
+            # from an edit -- it means the stored value was written by
+            # something computing signatures differently, which is
+            # exactly the shape of a second-implementation divergence
+            # or an unmigrated signature format.
+            if is_structurally_stale(src, entry):
+                report.findings.append(Finding(
+                    "V08", SEVERITY_WARNING, locale, ns, key,
+                    "structure signature does not match the current source"
+                    + ("; the ICU shape changed and the existing "
+                       "translation is now wrong"
+                       if needs_translation(src, entry) else
+                       " even though the source is unchanged -- run "
+                       "'llm-localizator migrate-state'"),
+                    path,
+                ))
+
+    if fingerprint is not None:
+        sk = state_key(ns, key)
+        if len(report.findings) == findings_before:
+            diff_cache.get(locale)[sk] = fingerprint
+        else:
+            diff_cache.get(locale).pop(sk, None)
+
+
 def run_validation(
     cfg: ProjectConfig,
     catalog: Catalog,
@@ -289,9 +532,6 @@ def run_validation(
     inputs (text, context, state signatures, glossary, check flags). Keys with
     findings are always re-checked. Needs ``state_dir``; ignored without it.
     """
-    from ..core.layout_qa import check_layout as layout_check
-    from ..projects.screenshots import resolve_screenshot_path
-
     report = ValidationReport()
     scope_err = _semantic_scope_error(
         cfg, catalog,
@@ -326,8 +566,14 @@ def run_validation(
     want_digraphs = check_semantic or check_digraphs
     want_length = check_semantic or check_length_semantic
     want_ws_fullkey = check_semantic  # V17/V22/V24 with umbrella only
-    want_any_advisory = want_script or want_digraphs or want_length or want_ws_fullkey
     want_layout = check_layout
+    ck = _KeyChecks(
+        report=report, cfg=cfg, notes=notes, state=state, tm=tm, glossary_cache=glossary_cache,
+        diff_cache=diff_cache, flags_sig=flags_sig, term_rows=term_rows,
+        check_expansion=check_expansion, check_semantic=check_semantic, check_numbers=check_numbers,
+        want_layout=want_layout, want_script=want_script, want_digraphs=want_digraphs,
+        want_length=want_length, want_ws_fullkey=want_ws_fullkey,
+    )
 
     for ns in _namespaces(cfg, catalog, namespace, namespaces):
         source = catalog.load(cfg.source_locale, ns)
@@ -385,210 +631,7 @@ def run_validation(
                     continue
                 if only_keys is not None and (ns, key) not in only_keys:
                     continue
-                translated = target.get(key)
-
-                if translated is None:
-                    # Frozen locales are layout checks (zh, ar): a gap is expected, not a defect.
-                    frozen = locale in (getattr(cfg, "frozen", None) or [])
-                    report.findings.append(Finding(
-                        "V01", SEVERITY_WARNING if frozen else SEVERITY_ERROR, locale, ns, key,
-                        "missing from frozen layout locale" if frozen else "missing from target locale",
-                        path,
-                    ))
-                    continue
-
-                key_glossary = glossary_cache.get(
-                    cfg.glossary_domains_for(
-                        ns, key_domain=notes.domain(ns, key),
-                    ),
-                )
-                term_rows.setdefault(locale, []).append(
-                    ((ns, key, path), src, translated),
-                )
-
-                findings_before = len(report.findings)
-                fingerprint = None
-                sk = state_key(ns, key)
-                entry = state_entries.get(sk) if state_entries is not None else None
-                if diff_cache is not None:
-                    fingerprint = _key_fingerprint(
-                        src, translated, key_glossary, notes, ns, key, flags_sig,
-                        entry,
-                    )
-                    if diff_cache.get(locale).get(sk) == fingerprint:
-                        report.skipped_unchanged += 1
-                        continue
-
-                ok, reason = validate_translation(
-                    src, translated, locale, key_glossary, standard=standard,
-                    prompt_text=getattr(cfg, "domain", None) or None,
-                )
-                if not ok:
-                    report.findings.append(Finding(
-                        _classify(reason), SEVERITY_ERROR, locale, ns, key, reason, path,
-                    ))
-
-                # V13 -- advisory glossary issues, reported separately from the
-                # blocking ones already covered by validate_translation.
-                for issue in glossary_violations(src, translated, key_glossary, locale):
-                    if not issue.blocking:
-                        report.findings.append(Finding(
-                            "V13", SEVERITY_WARNING, locale, ns, key, issue.message, path,
-                        ))
-
-                # V26 -- live text diverges from a high-score TM exact hit.
-                context_parts = [notes.note(ns, key)]
-                context = "; ".join(p for p in context_parts if p)
-                tm_hit = tm.exact(locale, src, context=context)
-                if (
-                    tm_hit
-                    and tm_hit.text.strip()
-                    and tm_hit.text.strip() != translated.strip()
-                    and (tm_hit.quality_score is None or tm_hit.quality_score >= 0.80)
-                ):
-                    report.findings.append(Finding(
-                        "V26", SEVERITY_WARNING, locale, ns, key,
-                        "translation differs from high-score TM exact match",
-                        path,
-                    ))
-
-                if translated == src and src.strip():
-                    if not entry or entry.get("status") != "intentional":
-                        report.findings.append(Finding(
-                            "V06", SEVERITY_WARNING, locale, ns, key,
-                            "identical to source (untranslated?)", path,
-                        ))
-
-                budget = check_max_chars(translated, notes.max_chars(ns, key))
-                if budget:
-                    report.findings.append(Finding(
-                        "V09", SEVERITY_WARNING, locale, ns, key, budget, path,
-                    ))
-
-                if check_expansion:
-                    band = check_expansion_band(src, translated, locale)
-                    if band:
-                        report.findings.append(Finding(
-                            "V14", SEVERITY_WARNING, locale, ns, key, band, path,
-                        ))
-
-                typography = check_locale_typography(translated, locale)
-                if typography:
-                    report.findings.append(Finding(
-                        "V34", SEVERITY_WARNING, locale, ns, key, typography, path,
-                    ))
-
-                grammar = check_locale_grammar(translated, locale)
-                if grammar:
-                    report.findings.append(Finding(
-                        "V45", SEVERITY_WARNING, locale, ns, key, grammar, path,
-                    ))
-
-                dnt_issue = check_dnt_spans(src, translated)
-                if dnt_issue:
-                    report.findings.append(Finding(
-                        "V42", SEVERITY_WARNING, locale, ns, key, dnt_issue, path,
-                    ))
-
-                eff_register, _ = cfg.style_for(locale)
-                if cfg.register_set or cfg.locale_styles.get(locale, ("", ""))[0]:
-                    register_hint = check_register(translated, locale, eff_register)
-                    if register_hint:
-                        report.findings.append(Finding(
-                            "V40", SEVERITY_WARNING, locale, ns, key, register_hint, path,
-                        ))
-
-                if check_numbers:
-                    numbers = check_number_format(src, translated, locale)
-                    if numbers:
-                        report.findings.append(Finding(
-                            "V38", SEVERITY_WARNING, locale, ns, key, numbers, path,
-                        ))
-
-                if want_layout:
-                    shot = resolve_screenshot_path(
-                        cfg.context_dir,
-                        screen=notes.screen(ns, key),
-                        image=notes.image(ns, key),
-                        locale=locale,
-                    )
-                    if shot is not None:
-                        for issue in layout_check(
-                            src,
-                            translated,
-                            locale,
-                            max_chars=notes.max_chars(ns, key),
-                            screenshot=shot,
-                        ):
-                            report.findings.append(Finding(
-                                "V28",
-                                SEVERITY_WARNING,
-                                locale,
-                                ns,
-                                key,
-                                f"{issue.code}: {issue.message}",
-                                path,
-                            ))
-
-                if want_any_advisory:
-                    fk_name = notes.full_key(ns, key)
-                    fk_val = target.get(fk_name) if fk_name else None
-                    _, advisory = validate_translation_detailed(
-                        src, translated, locale, key_glossary,
-                        max_chars=notes.max_chars(ns, key),
-                        fullkey_sibling=fk_val,
-                        check_whitespace=want_ws_fullkey,
-                        check_script=want_script,
-                        check_digraphs=want_digraphs,
-                        check_max_chars_warn=want_ws_fullkey,
-                        check_word_count=want_length,
-                        check_fullkey=want_ws_fullkey,
-                        check_untranslated=check_semantic,
-                        check_typography=False,
-                        standard=standard,
-                    )
-                    for failure in advisory:
-                        if failure.severity == "error":
-                            continue  # already reported via validate_translation
-                        if failure.id == "V13":
-                            continue  # already reported above, from the same glossary check
-                        report.findings.append(Finding(
-                            failure.id, SEVERITY_WARNING, locale, ns, key,
-                            failure.message, path,
-                        ))
-
-                if state is not None:
-                    if entry is not None:
-                        if needs_translation(src, entry, **notes.stale_args(ns, key)):
-                            report.findings.append(Finding(
-                                "V07", SEVERITY_WARNING, locale, ns, key,
-                                "stale: source or translator context changed since translation",
-                                path,
-                            ))
-                        # Checked independently of V07, not nested inside it. A
-                        # signature mismatch on an *unchanged* source cannot come
-                        # from an edit -- it means the stored value was written by
-                        # something computing signatures differently, which is
-                        # exactly the shape of a second-implementation divergence
-                        # or an unmigrated signature format.
-                        if is_structurally_stale(src, entry):
-                            report.findings.append(Finding(
-                                "V08", SEVERITY_WARNING, locale, ns, key,
-                                "structure signature does not match the current source"
-                                + ("; the ICU shape changed and the existing "
-                                   "translation is now wrong"
-                                   if needs_translation(src, entry) else
-                                   " even though the source is unchanged -- run "
-                                   "'llm-localizator migrate-state'"),
-                                path,
-                            ))
-
-                if fingerprint is not None:
-                    sk = state_key(ns, key)
-                    if len(report.findings) == findings_before:
-                        diff_cache.get(locale)[sk] = fingerprint
-                    else:
-                        diff_cache.get(locale).pop(sk, None)
+                _check_key(ck, standard, ns, key, src, locale, target, path, state_entries)
 
             # V12 -- keys present in the target but gone from source.
             for orphan in sorted(set(target) - set(source)):

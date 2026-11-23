@@ -64,7 +64,7 @@ def test_deferred_translate_skips_bt_until_phase_b(
         project_root,
         scores_dir=project_root / ".llm-scores",
         models={"default": "translategemma:4b"},
-        score_model="scoremodel",
+        score_model="scoremodel", judge_risky=False,
         bt_batch_size=2,
     )
     catalog = make_catalog(cfg)
@@ -106,7 +106,7 @@ def test_deferred_scoring_restart_after_partial_run(
         project_root,
         scores_dir=project_root / ".llm-scores",
         models={"default": "translategemma:4b"},
-        score_model="scoremodel",
+        score_model="scoremodel", judge_risky=False,
     )
     catalog = make_catalog(cfg)
     scores = ScoreStore(cfg.scores_dir)
@@ -168,7 +168,7 @@ def test_phase_b_receives_run_glossary_not_last_item_domain(
         glossary_domains={"app": ["game"]},
         scores_dir=project_root / ".llm-scores",
         models={"default": "translategemma:4b"},
-        score_model="scoremodel",
+        score_model="scoremodel", judge_risky=False,
         context_dir=notes,
     )
     captured: dict = {}

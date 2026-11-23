@@ -145,7 +145,7 @@ def derive_vram(models: set[str], overrides: dict[str, float] | None = None) -> 
     return round(max(table[m] for m in models) + VRAM_HEADROOM_GIB, 1)
 
 
-_CLOUD_KINDS = frozenset({"anthropic", "openai", "deepseek", "deepl"})
+_CLOUD_KINDS = frozenset({"anthropic", "openai", "deepseek", "deepl", "openai_compat"})
 
 
 def job_runs_on_cloud(cfg: ProjectConfig, job: str, locale: str | None = None) -> bool:
@@ -308,7 +308,7 @@ def _url_without_userinfo(url: str) -> str:
 _OVERRIDABLE: dict[str, tuple[str, ...]] = {
     "agent-hardcoded": ("--adapter", "--limit", "--dry-run"),
     "translate": ("--locales", "--model", "--engine", "--batch-size", "--force", "--flagged", "--dry-run", "--namespace",
-                  "--collection", "--ignore-min-keys", "--manifest"),
+                  "--collection", "--ignore-min-keys", "--manifest", "--keys", "--only-missing", "--sync"),
     "improve": ("--locales", "--model", "--engine", "--limit", "--dry-run", "--include-rejected"),
     "sync": ("--locales", "--dry-run", "--no-translate", "--strict-branch", "--diff", "--exit-nonzero"),
     "rescore": ("--locales", "--namespace", "--model", "--engine", "--dry-run"),

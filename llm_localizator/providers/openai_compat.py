@@ -17,12 +17,21 @@ import urllib.request
 
 from .base import CompletionRequest, Provider, ProviderError
 from .http_retry import urlopen_json
+from .keys import candidate_vars, resolve_api_key
 
 __all__ = ["OpenAICompatibleProvider"]
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-OPENAI_FILES_URL = "https://api.openai.com/v1/files"
+
+
+def chat_completions_url(base: str) -> str:
+    """``https://host/v1`` -> ``https://host/v1/chat/completions``; a full endpoint is kept as is."""
+    url = base.strip().rstrip("/")
+    return url if url.endswith("/chat/completions") else f"{url}/chat/completions"
+
+
+OPENAI_FILES_URL ="https://api.openai.com/v1/files"
 OPENAI_BATCHES_URL = "https://api.openai.com/v1/batches"
 
 
@@ -72,10 +81,15 @@ class OpenAICompatibleProvider(Provider):
         default_model: str,
         reasoning: bool = False,
         disable_thinking: bool = False,
+        api_key_env: str | None = None,
     ) -> None:
         self.kind = kind
-        self.api_key = (api_key or os.environ.get(env_var) or "").strip()
-        self.env_var = env_var
+        self.api_key_env = api_key_env
+        if api_key is None:
+            self.api_key = resolve_api_key(env_var, api_key_env).strip()
+        else:
+            self.api_key = api_key.strip()
+        self.env_var = " or ".join(candidate_vars(env_var, api_key_env))
         self.url = url
         self.default_model = default_model
         self.reasoning = reasoning

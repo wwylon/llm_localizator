@@ -18,6 +18,30 @@ from ..reporting import report
 __all__ = ["run_submit", "run_execute"]
 
 
+def read_keys_file(path: str) -> list[str]:
+    """Keys from a file: one per line or comma-separated, ``#`` comments ignored, ``-`` is stdin."""
+    import sys
+    from pathlib import Path
+
+    text = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8-sig")
+    keys: list[str] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        keys.extend(piece.strip() for piece in line.split(",") if piece.strip())
+    return keys
+
+
+def keys_from_args(args: argparse.Namespace) -> list[str] | None:
+    """``--keys`` and ``--keys-file`` merged (file keys last, duplicates dropped)."""
+    keys = list(parse_csv_list(getattr(args, "keys", None)) or [])
+    path = getattr(args, "keys_file", None)
+    if path:
+        keys.extend(read_keys_file(path))
+    return list(dict.fromkeys(keys)) or None
+
+
 def run_submit(args: argparse.Namespace, job: str = "translate") -> int:
     """Enqueue the job via ops (cloud gates stay single-sourced)."""
     cfg = resolve(args.project, args.config)
@@ -39,7 +63,9 @@ def run_submit(args: argparse.Namespace, job: str = "translate") -> int:
         force=bool(getattr(args, "force", False)),
         flagged=bool(getattr(args, "flagged", False)),
         dry_run=bool(getattr(args, "dry_run", False)),
-        keys=parse_csv_list(getattr(args, "keys", None)),
+        keys=keys_from_args(args),
+        only_missing=bool(getattr(args, "only_missing", False)),
+        sync=bool(getattr(args, "sync", False)),
         submit=not bool(getattr(args, "dry_run", False)),
         pre_translate=bool(getattr(args, "pre_translate", False)),
         tags=parse_csv_list(getattr(args, "tags", None)),
@@ -108,7 +134,7 @@ def run_execute(args: argparse.Namespace) -> int:
             print("(100%) No flagged keys - nothing to do.")
             return 0
 
-    named = parse_csv_list(getattr(args, "keys", None))
+    named = keys_from_args(args)
     tags = parse_csv_list(getattr(args, "tags", None))
     if tags:
         from ..projects.context import ContextNotes
@@ -118,6 +144,10 @@ def run_execute(args: argparse.Namespace) -> int:
         if not named:
             print("(100%) No keys with those tags - nothing to do.")
             return 0
+    if getattr(args, "sync", False):
+        import dataclasses
+
+        cfg = dataclasses.replace(cfg, budget_cloud_batch=False)
     result = run_translation(
         cfg, catalog, provider,
         locales=args.locales,
@@ -134,6 +164,7 @@ def run_execute(args: argparse.Namespace) -> int:
         report=report,
         icu_only=bool(getattr(args, "icu_only", False)),
         plain_only=bool(getattr(args, "plain_only", False)),
+        only_missing=bool(getattr(args, "only_missing", False)),
     )
 
     if result.rejected:

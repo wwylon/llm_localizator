@@ -293,6 +293,7 @@ Check the result with `llm-localizator validate <project>`.
 | `improve` | Submit overnight improve of low-score / flagged keys |
 | `ingest-visual` | Load consumer visual findings JSONL into the review queue (no LLM) |
 | `init` | Detect the catalogue layout and write a config file |
+| `localize-project` | One report for the localization checklist: scan, gaps, cost, next commands (read-only) |
 | `mcp` | stdio MCP server for agents (optional mcp extra) |
 | `metrics` | Edit rate, cycle time and coverage trend from history |
 | `migrate-state` | Recompute derived state fields after a signature-format change (no LLM) |

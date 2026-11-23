@@ -16,6 +16,31 @@ def _origin_allowed(origin: str | None) -> bool:
     return re.fullmatch(r"https?://(?:127\.0\.0\.1|localhost)(?::\d+)?", origin) is not None
 
 
+#: Sent on every response. The CSP is limited to what cannot break the pages (they
+#: use inline scripts): no framing, no plugins, no foreign base or form targets.
+SECURITY_HEADERS: dict[str, str] = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": (
+        "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+    ),
+}
+
+#: Largest accepted POST body. Routes that carry files (imports, uploads, screenshots,
+#: generic ops with embedded payloads) keep the old 32 MB; everything else is small JSON.
+BODY_LIMIT_DEFAULT = 4_000_000
+BODY_LIMIT_FILES = 32_000_000
+_FILE_ROUTE_HINTS = ("import", "upload", "screenshot", "/api/ops/")
+
+
+def max_body_bytes(path: str) -> int:
+    lowered = path.lower()
+    if any(hint in lowered for hint in _FILE_ROUTE_HINTS):
+        return BODY_LIMIT_FILES
+    return BODY_LIMIT_DEFAULT
+
+
 def _safe_filename(name: str) -> str:
     """Strip characters that could break out of a quoted Content-Disposition value."""
     return re.sub(r'[\x00-\x1f\x7f"\\;/]', "_", str(name))[:200] or "download"
@@ -42,11 +67,32 @@ def _install_session_token(cfg: ProjectConfig) -> str:
     path = cfg.state_root() / "web.token"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(token + "\n", encoding="utf-8")
+    _owner_only(path)
+    return token
+
+
+def _owner_only(path) -> None:
+    """Limit a secret file to the current user: mode 0600, or on Windows an ACL without inherited entries.
+
+    ``chmod`` only toggles the read-only flag on Windows, so a token file there stayed readable by other local users.
+    Best effort: a failure leaves the default permissions.
+    """
     try:
         os.chmod(path, 0o600)
     except OSError:
         pass
-    return token
+    if os.name != "nt":
+        return
+    import getpass
+    import subprocess
+
+    try:
+        subprocess.run(
+            ["icacls", str(path), "/inheritance:r", "/grant:r", f"{getpass.getuser()}:(R,W)"],
+            capture_output=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def rotate_web_token(handler_cls: type, cfg: ProjectConfig) -> str:

@@ -596,7 +596,7 @@
       row.appendChild(el("span", "rq-id", "#" + item.display_id));
       row.appendChild(typeBadge(item));
       row.appendChild(el("span", "", keyPath(item) + " · " + item.locale
-        + (item.score != null ? " — score " + item.score.toFixed(2) : "")));
+        + (item.score != null ? " — " + uiT("rev_score", "score") + " " + item.score.toFixed(2) : "")));
       row.appendChild(el("span", "rq-arrow", "→"));
       row.addEventListener("click", function () { select(item); });
       list.appendChild(row);

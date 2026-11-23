@@ -41,7 +41,7 @@ def test_rescore_saves_scores_before_a_crash(tmp_path, make_config) -> None:
     from llm_localizator.pipeline.scoring import PendingScoreItem, rescore_items
     from llm_localizator.providers import NullProvider
 
-    cfg = make_config(tmp_path, bt_batch_size=1)
+    cfg = make_config(tmp_path, bt_batch_size=1, judge_risky=False)
     scores = ScoreStore(tmp_path / "scores")
     items = [
         PendingScoreItem(locale="pl", namespace="app", key=f"k{i}",

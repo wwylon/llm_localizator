@@ -717,19 +717,25 @@ def _probe_provider(entry: NamedProvider, *, allow_cloud: bool) -> dict[str, Any
         if err is None:
             return {"status": "online", "models": models}
         return {"status": "offline", "models": [], "reason": "unreachable"}
-    if kind in {"openai", "anthropic", "deepseek", "deepl"}:
+    if kind in {"openai", "anthropic", "deepseek", "deepl", "openai_compat"}:
+        from ..providers.keys import candidate_vars, key_source
+
         env_map = {
+            "openai_compat": "OPENAI_COMPAT_API_KEY",
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "deepseek": "DEEPSEEK_API_KEY",
             "deepl": "DEEPL_AUTH_KEY",
         }
-        key = os.environ.get(env_map.get(kind, ""), "")
+        key_env = getattr(entry, "api_key_env", "") or None
+        key = "x" if key_source(env_map.get(kind, ""), key_env) else ""
         # Never a paid call: "online" means usable (cloud allowed and a key set), and the reason says which is missing.
         if not allow_cloud:
             return {"status": "offline", "models": [], "reason": "cloud_off"}
         if not key.strip():
-            return {"status": "offline", "models": [], "reason": "no_key", "envVar": env_map.get(kind, "")}
+            return {"status": "offline", "models": [], "reason": "no_key",
+                    "envVar": env_map.get(kind, ""),
+                    "envVars": candidate_vars(env_map.get(kind, ""), key_env)}
         return {"status": "online", "models": []}
     if kind == "ctranslate2":
         mp = Path(entry.model_path) if entry.model_path else None

@@ -115,6 +115,7 @@ def _overview_from_status_rows(st: AppState, rows) -> dict:
             "translated": row.translated,
             "stale": row.stale,
             "missing": row.missing,
+            "no_record": row.no_record,
             "total": row.total,
             "coverage": round(row.coverage * 100, 1),
             "frozen": row.frozen,

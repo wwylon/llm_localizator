@@ -44,6 +44,8 @@ def _add_web(sub: argparse._SubParsersAction) -> None:
                     help="Web port to probe (default: 8770)")
     dr.add_argument("--skip-ollama", action="store_true",
                     help="Skip Ollama connectivity check")
+    dr.add_argument("--strict", action="store_true",
+                    help="Exit 1 when Ollama is unreachable (default: a warning)")
     dr.add_argument("--json", action="store_true", help="Machine-readable output")
 
 
@@ -59,6 +61,22 @@ def _add_scan(sub: argparse._SubParsersAction) -> None:
                     help="Exit 1 if any hardcoded string is found")
     sc.add_argument("--lint-directives", action="store_true",
                     help="Report stale or malformed l10n-ignore comments (exit 1 if any)")
+    sc.add_argument("--surface", default=None,
+                    help="Only these [scan.surfaces] names (comma-separated), e.g. web,cli")
+
+    lp = sub.add_parser(
+        "localize-project",
+        help="One report for the localization checklist: scan, gaps, cost, next commands (read-only)",
+    )
+    add_project_args(lp)
+    lp.add_argument("--locales", type=lambda v: [p.strip() for p in v.split(",") if p.strip()], default=None,
+                    help="Locales to check (default: targets that are not frozen)")
+    lp.add_argument("--submit", action="store_true",
+                    help="Also enqueue `translate --only-missing` for those locales")
+    lp.add_argument("--baseline", action="store_true",
+                    help="Record today's validation errors (writes one small state file) so later runs "
+                         "separate new errors from old ones")
+    lp.add_argument("--format", dest="fmt", choices=["text", "json"], default="text")
 
     disc = sub.add_parser(
         "discover",
@@ -118,7 +136,8 @@ def _add_status(sub: argparse._SubParsersAction) -> None:
     chk.add_argument("--min-coverage", type=float, default=1.0,
                      help="Required coverage per locale, 0-1 (default 1.0)")
     chk.add_argument("--allow-stale", action="store_true", help="Do not fail on stale translations")
-    chk.add_argument("--format", dest="fmt", choices=["text", "json"], default="text")
+    chk.add_argument("--format", dest="fmt", choices=["text", "json", "github"], default="text",
+                     help="Output format. 'github' emits one workflow error annotation per problem.")
 
     conc = sub.add_parser("concordance", help="Search the translation memory (no LLM)")
     add_project_args(conc)

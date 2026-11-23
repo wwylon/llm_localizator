@@ -197,7 +197,8 @@ def test_sync_diff_posts_a_source_changed_event(project_root, make_config, monke
     from llm_localizator.ops.dispatch import dispatch_op
     from tests.conftest import setup_project
 
-    setup_project(project_root, {"a": "A", "b": "B"}, existing={"a": "x", "b": "y"})
+    # Untranslated copies of the source are backlog; a differing value with no record is an existing translation.
+    setup_project(project_root, {"a": "A", "b": "B"}, existing={"a": "A", "b": "B"})
     cfg = make_config(project_root, notify_webhook="http://127.0.0.1:9/hook")
     seen: list[dict] = []
     monkeypatch.setattr("llm_localizator.ops.notify.notify_webhook", lambda url, payload, **_kw: seen.append(payload))

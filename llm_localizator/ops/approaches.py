@@ -22,7 +22,7 @@ from .types import OpResult
 
 __all__ = ["Approach", "APPROACHES", "by_id", "probe", "recommend", "reason_key", "wiring", "op_approach"]
 
-_CLOUD = frozenset({"anthropic", "openai", "deepseek", "deepl"})
+_CLOUD = frozenset({"anthropic", "openai", "deepseek", "deepl", "openai_compat"})
 
 
 @dataclass(frozen=True)

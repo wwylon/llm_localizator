@@ -78,7 +78,7 @@ def _help_by_name(sub_action: argparse._SubParsersAction) -> dict[str, str]:
 
 # CLI / HTTP ops that are not driven from the Operations carousel.
 _OPS_EXCLUDED = frozenset({"web", "mcp", "add-locale", "watch", "check", "workflow", "quality",
-                           "runtime", "check-keys", "approach",
+                           "runtime", "check-keys", "approach", "localize-project",
                            "help", "skill", "set", "review-risk", "cycle", "onboard",
                            "context-propose", "context-note", "server-copy",
                            "glossary-learn", "import-review"})  # CLI-only: ADR-118, ADR-123

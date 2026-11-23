@@ -112,7 +112,7 @@ def _python_file(f: _File) -> set[tuple[int, str]]:
     from .py_sinks import dev_strings, server_strings
 
     skip = dev_strings(f.text)
-    _emit_python_sinks(server_strings(f.text), f.rel, f.result)
+    _emit_python_sinks(server_strings(f.text, gui_project=project_index(f.scanner).py_gui), f.rel, f.result)
     skip |= {(h.line, h.text) for h in f.result.hardcoded if h.file == f.rel}  # sink hits: no low duplicate
     return skip
 
@@ -135,7 +135,29 @@ def _go_file(f: _File) -> None:
                 ))
 
 
-def _go_sink(f: _File, line: str, literal: str, sink: str | None):
+#: Methods whose return value is shown as a name or caption (a ``StringConverter.toString``, an enum ``getLabel``).
+_JAVA_DISPLAY_METHOD = re.compile(
+    r"\bString\s+(?:toString|getName|getLabel|getTitle|getDisplayName|getText|getCaption|getDescription|displayName)\s*\("
+)
+
+
+_JAVA_METHOD_DECL = re.compile(r"\b(?:public|private|protected)\b[^;=]*\([^;]*\)\s*(?:throws [\w., ]+)?\s*\{?\s*$")
+
+
+def _java_sink(f: _File, line: str, literal: str, sink: str | None, lineno: int = 0):
+    """``return "Top Right";`` inside a display-name method (a converter's ``toString``, ``getLabel()``)."""
+    if sink is not None or not lineno or not re.match(r'\s*(?:case\b[^:]*:\s*)?return\s+"', line):
+        return sink
+    for earlier in range(lineno - 2, max(lineno - 16, -1), -1):
+        above = f.lines[earlier]
+        if _JAVA_DISPLAY_METHOD.search(above):
+            return "display name"
+        if _JAVA_METHOD_DECL.search(above):
+            return None  # another method starts here: the ``return`` belongs to it
+    return None
+
+
+def _go_sink(f: _File, line: str, literal: str, sink: str | None, lineno: int = 0):
     if sink is not None or "%w" in literal:  # ``"read prefs: %w"`` wraps an internal error
         return sink
     if (_GO_ERR.search(line) and project_index(f.scanner).go_cli
@@ -161,7 +183,7 @@ _MARKUP_HOOKS = {"php": _php_markup}
 #: Runs on the blanked text before the literal loop; may return ``(line, text)`` pairs the loop skips.
 _FILE_HOOKS = {"python": _python_file, "rust": _rust_file, "go": _go_file}
 #: Finds a sink the shared table missed (before the strings-file rule).
-_SINK_HOOKS = {"go": _go_sink}
+_SINK_HOOKS = {"go": _go_sink, "java": _java_sink}
 #: Decides a found sink is already routed (``_SKIP``) or weaker (after the strings-file rule).
 _ROUTE_HOOKS = {"swift": _swift_route}
 #: Languages whose developer text is judged by their own pass, not by ``_LOG_START`` / ``log_lines``.
@@ -215,8 +237,13 @@ def scan_literal_lines(scanner, lang: SourceLanguage, rel: str, lines: list[str]
             ))
             continue
         sink = ui_sink_before(lang.id, line, literal)
+        if sink is None and line.lstrip()[:1] in ('"', "'", "`"):
+            # A call split over lines: ``Text(`` on one line, ``'Close',`` on the next.
+            previous = _previous_code_line(lines, lineno - 1)
+            if previous.endswith("("):
+                sink = ui_sink_before(lang.id, previous + " " + line.lstrip(), literal)
         if sink_hook is not None:
-            sink = sink_hook(f, line, literal, sink)
+            sink = sink_hook(f, line, literal, sink, lineno)
         if sink is None and strings_file and not line.lstrip().startswith(("import ", "package ", "#include", "using ")):
             sink = "strings file"  # ``strings.dart`` / ``Strings.kt``: the project's own home for UI text (B19)
         if route_hook is not None:
@@ -224,6 +251,14 @@ def scan_literal_lines(scanner, lang: SourceLanguage, rel: str, lines: list[str]
             if sink is _SKIP:
                 continue
         _emit(literal, rel, lineno, result, sink=sink)
+
+
+def _previous_code_line(lines: list[str], index: int) -> str:
+    """The nearest earlier non-blank line (right-stripped), or an empty string."""
+    for i in range(index - 1, max(index - 4, -1), -1):
+        if 0 <= i < len(lines) and lines[i].strip():
+            return lines[i].rstrip()
+    return ""
 
 
 def _scan_embedded_markup(

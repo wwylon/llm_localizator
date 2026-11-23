@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 import json
 import re
 import subprocess
@@ -440,6 +442,7 @@ def test_pre_translate_skips_score_and_matches_filter(
     assert [row["key"] for row in payload["rows"]] == ["greet"]
 
 
+@pytest.mark.slow
 def test_ci_doc_invokes_validate_only() -> None:
     text = Path("docs/ci.md").read_text(encoding="utf-8")
     fences = re.findall(r"```[^\n]*\n(.*?)```", text, re.S)

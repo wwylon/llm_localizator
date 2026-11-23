@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 
 from ..catalog import FlagStore, catalog_for
@@ -37,6 +38,8 @@ def _submit(cfg: ProjectConfig, req: TranslateRequest) -> OpResult:
         overrides["--keys"] = ",".join(req.keys)
     for flag, value in (
         ("force", req.force), ("flagged", req.flagged),
+        ("only_missing", getattr(req, "only_missing", False)),
+        ("sync", getattr(req, "sync", False)),
         ("dry_run", req.dry_run), ("pre_translate", req.pre_translate),
         ("icu_only", getattr(req, "icu_only", False)), ("plain_only", getattr(req, "plain_only", False)),
     ):
@@ -212,6 +215,8 @@ def op_translate(
         + (" force" if req.force else "")
     )
 
+    if getattr(req, "sync", False):
+        cfg = dataclasses.replace(cfg, budget_cloud_batch=False)
     result = run_translation(
         cfg,
         catalog,
@@ -230,6 +235,7 @@ def op_translate(
         ignore_min_keys=True,
         icu_only=bool(getattr(req, "icu_only", False)),
         plain_only=bool(getattr(req, "plain_only", False)),
+        only_missing=bool(getattr(req, "only_missing", False)),
         report=_report,
     )
     summary = (

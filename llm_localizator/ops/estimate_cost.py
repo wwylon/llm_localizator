@@ -130,7 +130,7 @@ def _estimate_judged(cfg: ProjectConfig, req: EstimateCostRequest, locales: list
     from ..catalog.cloud_cost import CLOUD_DEFAULT_MODEL
 
     model = (getattr(cfg, "judge_model", None) or getattr(cfg.provider, "model", None)
-             or CLOUD_DEFAULT_MODEL.get(kind, CLOUD_DEFAULT_MODEL["anthropic"]))
+             or CLOUD_DEFAULT_MODEL.get(kind) or "")
     try:
         figures = price_sources(
             [text for texts in grouped.values() for text in texts], kind=kind, model=model,

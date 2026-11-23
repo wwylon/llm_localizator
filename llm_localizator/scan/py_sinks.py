@@ -23,6 +23,7 @@ Pure: source text in, findings out.
 from __future__ import annotations
 
 import ast
+import builtins
 import functools
 import re
 from dataclasses import dataclass
@@ -58,7 +59,9 @@ class ServerString:
 _CHAT_RECEIVER = re.compile(r"(?:ctx|channel|interaction|followup|response|webhook|author|user|member|thread|dm|message|recipient|msg)")
 _CHAT_CALLS = frozenset({"send_message", "reply", "respond", "send_modal", "edit_message", "add_field", "set_footer", "set_author"})
 _CHAT_KWARGS = frozenset({"content", "title", "description", "name", "value", "text", "message", "footer", "label", "placeholder"})
-_UI_HELPER = re.compile(r"(?:toast|dialog|snack|popup|show_(?:msg|message|error|info|alert)|notify_user)", re.I)
+_UI_HELPER = re.compile(
+    r"(?:toast|dialog|snack|popup|show_(?:msg|message|error|info|alert|success|warning|status|notification)|notify_user)", re.I,
+)
 #: Chat-bot command decorators whose docstring the bot's help command shows (not ``click``: CLI help is judged elsewhere).
 _DOC_DECORATOR = re.compile(r"(?:commands\.(?:command|group|hybrid_command|hybrid_group)|app_commands|slash_command|context_menu|\bbot\.(?:command|group)|\btree\.command)")
 #: Exception classes whose message a project shows to its users (pool D: ``raise BotError("Bot is not ready yet.")``
@@ -149,7 +152,7 @@ def _parse(source: str) -> ast.Module | None:
         return None
 
 
-def server_strings(source: str) -> list[ServerString]:
+def server_strings(source: str, *, gui_project: bool = False) -> list[ServerString]:
     """Every people-facing string literal in one Python module."""
     tree = _parse(source)
     if tree is None:
@@ -246,13 +249,206 @@ def server_strings(source: str) -> list[ServerString]:
             first, second = node.value.elts
             if isinstance(first, ast.Constant) and first.value in (False, None):
                 add(second, _text(second), "return-tuple")  # ``return False, "Invalid API token"``
+            elif isinstance(first, ast.Constant) and first.value is True and len((_text(second) or "").split()) >= 2:
+                add(second, _text(second), "return-tuple")  # ``return True, "Capabilities set successfully"``
         elif isinstance(node, ast.Dict):
             for key, value in zip(node.keys, node.values):
                 field = _text(key) if key is not None else None
                 if field and field.casefold() in COPY_FIELDS:
                     add(value, _text(value), f"payload:{field}")
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in _MESSAGE_VARS):
+            text = _text(node.value)
+            if _prose_message(text):
+                add(node.value, text, "message-variable")  # ``msg = "Port must be between 1 and 65535"``
+    desktop_module = _DESKTOP_MODULE.search(source) is not None
+    if desktop_module:
+        for node in ast.walk(tree):
+            _desktop_strings(node, add)
+    if desktop_module or gui_project:
+        for node in ast.walk(tree):
+            _gui_project_strings(node, add, desktop_module=desktop_module, gui_project=gui_project)
+    if gui_project:
+        developer = dev_strings(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.JoinedStr):
+                text = _text(node)
+                if text and _gui_message(text) and (node.lineno, " ".join(text.split())) not in developer:
+                    add(node, text, "gui-fstring")  # ``f"Error: {exc}"`` in a desktop app is a status or dialog message
     out.sort(key=lambda s: s.line)
     return out
+
+
+_GUI_MESSAGE = re.compile(r"\W*[A-Z][a-z]{2,}[\s:,.!]")
+_CODE_LIKE = re.compile(r"://|\b(?:SELECT|INSERT|UPDATE|DELETE|FROM|WHERE)\b|[\\/]\w+\.\w+|--\w|\$\{|\b\w+\(\)")
+
+
+def _gui_message(text: str) -> bool:
+    """A formatted sentence or label (``Error: {x}``, ``Chapters ({x})``): a capitalised word, then more, and a placeholder."""
+    if "{" not in text or len(text) > 140 or not _GUI_MESSAGE.match(text) or _CODE_LIKE.search(text):
+        return False
+    return len(re.findall(r"[^\W\d_]{3,}", re.sub(r"\{[^}]*\}", " ", text))) >= 1
+
+
+#: A desktop GUI module: it imports Tk, Qt, wx, Kivy or Toga. Only then are the widget calls below read as UI text.
+_DESKTOP_MODULE = re.compile(
+    r"^\s*(?:import|from)\s+(?:tkinter|Tkinter|customtkinter|PyQt[4-6]|PySide[2-6]|wx|kivy|toga|flet|qt|slicer|ctk)\b", re.M,
+)
+#: Widget constructors whose first positional argument, or ``text=``/``label=``, is the visible caption.
+_DESKTOP_WIDGET = re.compile(
+    r"(?:Button|Label|Checkbutton|Radiobutton|CheckBox|RadioButton|GroupBox|LabelFrame|Action|Menu|MenuItem|"
+    r"StaticText|ToolButton|Message|Text|Tab|Chip|Tooltip|Option|Banner|SnackBar|Title)$"
+)
+#: Methods that take the text to show (menu entries, window titles, tooltips, list items, tab names, header labels).
+_DESKTOP_SETTERS = frozenset({
+    "add_command", "add_cascade", "add_checkbutton", "add_radiobutton", "addAction", "addMenu", "addItem", "addItems",
+    "addTab", "insertTab", "setWindowTitle", "setText", "setToolTip", "setPlaceholderText", "setStatusTip",
+    "setTitle", "setLabel", "setHeaderLabels", "setHorizontalHeaderLabels", "setVerticalHeaderLabels", "setWhatsThis",
+    "SetLabel", "SetTitle", "SetToolTip", "SetStatusText", "showMessage", "setButtonText", "setLabelText",
+    "setInformativeText", "title", "wm_title", "addRow",
+})
+#: Qt dialog statics whose title, label and filter arguments are shown: ``QInputDialog.getText(self, "Add", "Prefix:")``,
+#: ``QFileDialog.getSaveFileName(self, "Save as")``. The receiver has to say it is a dialog.
+_DIALOG_STATICS = frozenset({
+    "getText", "getInt", "getDouble", "getItem", "getMultiLineText", "getOpenFileName", "getOpenFileNames",
+    "getSaveFileName", "getExistingDirectory",
+})
+_DESKTOP_KWARGS = frozenset({
+    "text", "label", "title", "tooltip", "tip", "placeholder", "caption", "hint_text", "helper_text", "subtitle",
+    "content",
+})
+#: Keyword arguments that hold visible text on any call in a GUI project (a settings-row or card class of the app's
+#: own: ``SettingField(label="Port", tooltip="Default is 7777.")``).
+_GUI_TEXT_KWARGS = frozenset({
+    "label", "tooltip", "placeholder", "hint", "hint_text", "helper_text", "caption", "subtitle", "title", "description",
+})
+#: ``front_tooltip=``, ``submit_label=``: a keyword named for what it holds. These need a capitalised value.
+_GUI_TEXT_SUFFIXES = ("_tooltip", "_label", "_text", "_title", "_hint", "_caption", "_placeholder")
+#: Keyword lists of display strings: ``options=["Relative", "Absolute"]``.
+_GUI_LIST_KWARGS = frozenset({"options", "choices", "items", "labels", "headers"})
+#: Variables that hold an error or status sentence (``msg = "Port must be between 1 and 65535"``): any Python project.
+_MESSAGE_VARS = frozenset({"msg", "message", "error_msg", "error_message", "err_msg", "detail", "reason"})
+#: Variables that hold a caption in a GUI module (``desc = "Default is 7777."``, ``tooltip = "..."``).
+_CAPTION_VARS = frozenset({"desc", "tooltip", "label", "title", "hint", "caption"})
+#: Attributes a GUI module assigns visible text to (``page.title = "Dashboard"``, ``status.value = "Connected"``).
+_CAPTION_ATTRS = frozenset({
+    "title", "text", "label", "tooltip", "hint_text", "helper_text", "placeholder", "caption", "subtitle", "value",
+})
+
+
+def _capitalised_label(text: str | None) -> bool:
+    """A short caption or sentence that starts with a capital letter and holds a word (not a path, id or URL)."""
+    if not text or not text[0].isupper() or "/" in text or "\\" in text or "://" in text:
+        return False
+    return _has_word(text) and len(text) <= 160
+#: Calls whose ``description=`` and ``title=`` are documentation, not screen copy.
+_NOT_GUI_TEXT_CALLS = frozenset({"Field", "ArgumentParser", "add_parser", "add_argument", "setup", "namedtuple"})
+#: Message-box helpers: ``QMessageBox.warning(self, "Title", "text")``, ``messagebox.showerror("Title", "text")``. The
+#: receiver has to say it is a message box, so ``logging.warning("...")`` stays out.
+_MESSAGEBOX_CALLS = frozenset({
+    "critical", "warning", "information", "question", "about", "showinfo", "showwarning", "showerror", "askquestion",
+    "askokcancel", "askyesno", "askretrycancel", "askyesnocancel",
+})
+#: Keyword arguments and dict keys that hold a tuple or list of captions.
+_DESKTOP_LISTS = frozenset({"labels", "choices", "headers", "items"})
+_DESKTOP_DICT_KEYS = frozenset({"label", "text", "title", "tooltip", "caption"})
+
+
+def _texts(node: ast.AST | None):
+    """The string literals of one argument: a literal, or the literals inside a list or tuple of them."""
+    if isinstance(node, (ast.List, ast.Tuple)):
+        for element in node.elts:
+            yield element, _text(element)
+    else:
+        yield node, _text(node)
+
+
+def _desktop_strings(node: ast.AST, add) -> None:
+    """Captions a Tk, Qt or wx program shows: widget text, menu entries, window titles, tooltips (idiom-based)."""
+    if isinstance(node, ast.Call) and not _is_log_call(node):
+        name = _callee(node)
+        sink = f"desktop:{name}"
+        if _DESKTOP_WIDGET.search(name) and node.args:
+            add(node.args[0], _text(node.args[0]), sink)
+        if name in _DESKTOP_SETTERS:
+            for arg in node.args:
+                for element, text in _texts(arg):
+                    add(element, text, sink)
+        elif (name in _MESSAGEBOX_CALLS and "messagebox" in _receiver(node)) or (
+            name in _DIALOG_STATICS and "dialog" in _receiver(node)
+        ):
+            for arg in node.args:
+                add(arg, _text(arg), sink)
+        elif name == "translate" and len(node.args) >= 2:
+            # Qt (and pyuic-generated code): ``QCoreApplication.translate("Dialog", "Text", None)``; the text is the second argument.
+            add(node.args[1], _text(node.args[1]), sink)
+        for kw in node.keywords:
+            if kw.arg in _DESKTOP_KWARGS and (_DESKTOP_WIDGET.search(name) or name in _DESKTOP_SETTERS):
+                add(kw.value, _text(kw.value), sink)
+            elif kw.arg in _DESKTOP_LISTS:
+                for element, text in _texts(kw.value):
+                    add(element, text, sink)
+    elif isinstance(node, ast.Dict):
+        for key, value in zip(node.keys, node.values):
+            field = _text(key) if key is not None else None
+            if field and field.casefold() in _DESKTOP_DICT_KEYS:
+                add(value, _text(value), f"desktop:{field}")
+
+
+#: Status and message helpers of a GUI program: ``self.set_status("Saved")``, ``update_status(...)``, ``show_error(...)``.
+_GUI_STATUS_CALL = re.compile(r"^_?(?:set|update|show|display)_\w*(?:status|message|error|success|warning|info)$")
+_BUILTIN_NAMES = frozenset(dir(builtins))
+_LABEL_KEY = re.compile(r"[a-z0-9_.-]{1,16}")
+
+
+def _prose_message(text: str | None) -> bool:
+    """A sentence a person reads: three words or more, starting with a capital (or a non-Latin letter)."""
+    if not text:
+        return False
+    words = text.split()
+    return len(words) >= 3 and (text[0].isupper() or not text[0].isascii()) and _has_word(text)
+
+
+def _gui_project_strings(node: ast.AST, add, *, desktop_module: bool, gui_project: bool) -> None:
+    """Screen copy that only a GUI program has: status helpers, errors raised for the user, code-to-label tables."""
+    if isinstance(node, ast.Call) and not _is_log_call(node) and _GUI_STATUS_CALL.match(_callee(node)):
+        for arg in node.args:
+            add(arg, _text(arg), f"gui-status:{_callee(node)}")
+    elif isinstance(node, ast.Call) and not _is_log_call(node) and _callee(node) not in _NOT_GUI_TEXT_CALLS:
+        for kw in node.keywords:
+            if kw.arg in _GUI_TEXT_KWARGS:
+                add(kw.value, _text(kw.value), f"gui-kwarg:{kw.arg}")
+            elif kw.arg and kw.arg.endswith(_GUI_TEXT_SUFFIXES) and _capitalised_label(_text(kw.value)):
+                add(kw.value, _text(kw.value), f"gui-kwarg:{kw.arg}")
+            elif kw.arg in _GUI_LIST_KWARGS and isinstance(kw.value, (ast.List, ast.Tuple)):
+                for element in kw.value.elts:
+                    if _capitalised_label(_text(element)):
+                        add(element, _text(element), f"gui-list:{kw.arg}")
+    elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target = node.targets[0]
+        text = _text(node.value)
+        if isinstance(target, ast.Name) and target.id in _CAPTION_VARS and _capitalised_label(text):
+            add(node.value, text, f"gui-caption:{target.id}")
+        elif desktop_module and isinstance(target, ast.Attribute) and target.attr in _CAPTION_ATTRS and _capitalised_label(text):
+            add(node.value, text, f"gui-caption:{target.attr}")  # ``page.title = "Dashboard"``
+    elif gui_project and isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call) and node.exc.args:
+        # A project-defined error (``raise M4BError("Cover download failed for this book.")``) travels to a dialog in a
+        # desktop app. Builtin errors (ValueError, RuntimeError) stay developer text.
+        name = _callee(node.exc)
+        if name.endswith(("Error", "Exception")) and name not in _BUILTIN_NAMES and not _user_exception(name):
+            arg = node.exc.args[0]
+            if _prose_message(_text(arg)):
+                add(arg, _text(arg), "gui-exception")
+    elif desktop_module and isinstance(node, ast.Dict) and len(node.keys) >= 2:
+        # ``{"dol": "App", "thm": "Theme"}``: a code-to-name table whose values fill a list or a button caption.
+        keys = [_text(k) if k is not None else None for k in node.keys]
+        values = [_text(v) for v in node.values]
+        if all(k and _LABEL_KEY.fullmatch(k) for k in keys) and all(
+            v and v[0].isupper() and len(v) <= 40 and _has_word(v) and v.strip() == v for v in values
+        ):
+            for value_node, value in zip(node.values, values):
+                add(value_node, value, "gui-labels")
 
 
 _QT_SIGNAL = frozenset({"Signal", "pyqtSignal"})
@@ -288,6 +484,23 @@ def _is_log_call(node: ast.Call) -> bool:
     return name in _LOG_OBJECTS or name.lower().endswith("logger")
 
 
+_REGEX_CALLS = frozenset({"compile", "sub", "subn", "search", "match", "fullmatch", "findall", "finditer", "split"})
+_LANGUAGE_KEY = re.compile(r"[a-z]{2,3}(?:[-_][A-Za-z]{2,4})?")
+
+
+def _is_regex_call(node: ast.Call) -> bool:
+    func = node.func
+    return isinstance(func, ast.Attribute) and func.attr in _REGEX_CALLS and isinstance(func.value, ast.Name) and func.value.id == "re"
+
+
+def _is_language_catalogue(node: ast.Dict) -> bool:
+    """``{"en": {...}, "fa": {...}}``: language codes at the top, one table of screen text under each."""
+    if len(node.keys) < 2 or not all(isinstance(v, ast.Dict) for v in node.values):
+        return False
+    keys = [_text(k) if k is not None else None for k in node.keys]
+    return all(k and _LANGUAGE_KEY.fullmatch(k) for k in keys)
+
+
 def dev_strings(source: str) -> set[tuple[int, str]]:
     """``(line, text)`` of literals only developers see: log/print arguments, non-HTTP ``raise`` messages."""
     tree = _parse(source)
@@ -302,9 +515,21 @@ def dev_strings(source: str) -> set[tuple[int, str]]:
                 if text:
                     out.add((sub.lineno, " ".join(text.split())))
 
+    def collect_all(root: ast.AST) -> None:
+        for sub in ast.walk(root):
+            text = _text(sub) if isinstance(sub, (ast.Constant, ast.JoinedStr)) else None
+            if text:
+                out.add((sub.lineno, " ".join(text.split())))
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _is_log_call(node):
             collect(node)
+        elif isinstance(node, ast.Call) and _is_regex_call(node):
+            collect(node)  # a pattern is code, whatever script it is written in
+        elif isinstance(node, ast.Tuple) and any(isinstance(e, ast.Call) and _is_regex_call(e) for e in node.elts):
+            collect_all(node)  # ``(re.compile("a  b"), "a b")``: the replacement belongs to the pattern
+        elif isinstance(node, ast.Dict) and _is_language_catalogue(node):
+            collect_all(node)  # the project's own ``{"en": {...}, "fa": {...}}`` catalogue, read through its own lookup
         elif isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
             name = _callee(node.exc)
             if not _user_exception(name):

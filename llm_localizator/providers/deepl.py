@@ -62,8 +62,15 @@ class DeepLProvider(Provider):
         formality: str = "prefer_less",
         use_free: bool | None = None,
         source_locale: str = "en",
+        api_key_env: str | None = None,
     ) -> None:
-        self.auth_key = (auth_key or os.environ.get("DEEPL_AUTH_KEY") or "").strip()
+        from .keys import resolve_api_key
+
+        self.api_key_env = api_key_env
+        if auth_key is None:
+            self.auth_key = resolve_api_key("DEEPL_AUTH_KEY", api_key_env).strip()
+        else:
+            self.auth_key = auth_key.strip()
         self.formality = formality
         self.source_locale = source_locale or "en"
         if use_free is None:
@@ -78,9 +85,10 @@ class DeepLProvider(Provider):
 
     def complete(self, request: CompletionRequest) -> str:
         if not self.auth_key:
-            raise ProviderError(
-                "DeepL auth key missing — set DEEPL_AUTH_KEY in the environment"
-            )
+            from .keys import candidate_vars
+
+            names = " or ".join(candidate_vars("DEEPL_AUTH_KEY", self.api_key_env))
+            raise ProviderError(f"DeepL auth key missing — set {names} in the environment")
         locale = str(
             request.target_locale
             or request.options.get("target_lang")

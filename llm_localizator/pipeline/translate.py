@@ -101,8 +101,12 @@ __all__ = [
 Reporter = Callable[[str], None]
 
 #: Flag reason for a key whose ICU message failed whole, by fragments and on the secondary.
-ICU_FAILED = "icu_failed"
 
+
+from .translate_process import (  # noqa: F401  (re-exported: tests and ops import them from here)
+    ICU_FAILED, _Loc, _append_flag, _dual_candidate, _process_translation, _split_blocked, _try_glossary_answer,
+    _try_tm_hit,
+)
 
 @dataclass
 class TranslationResult:
@@ -199,11 +203,19 @@ def collect_work(
     force: bool = False,
     only_keys: dict[str, set[str]] | None = None,
     held: list[WorkItem] | None = None,
+    skip_unrecorded: bool = True,
+    unrecorded: list[WorkItem] | None = None,
 ) -> list[WorkItem]:
     """Everything needing translation, computed up front for honest progress.
 
     ``human``-tier keys (ADR-52) never enter the list; when ``held`` is given the
     ones that would otherwise have been work are appended to it.
+
+    A target value that differs from the source but has no state record (a project
+    that already had catalogues before it used this tool) is an existing translation,
+    not a gap. It stays out of a broad run so it is never overwritten; when
+    ``unrecorded`` is given those items are appended to it. ``force``, naming the key
+    (``only_keys``) or ``skip_unrecorded=False`` retranslates them.
     """
     from .tiers import TIER_HUMAN, tier_for
 
@@ -249,9 +261,46 @@ def collect_work(
                     continue
                 if not force and is_verified(entry):
                     continue
+                if (
+                    skip_unrecorded and not force and entry is None
+                    and current.strip() and current != value
+                ):
+                    if unrecorded is not None:
+                        unrecorded.append(item)
+                    continue
                 if needs_translation(value, entry, force, **notes.stale_args(ns, key)):
                     work.append(item)
     return work
+
+
+def missing_keys(
+    cfg: ProjectConfig,
+    catalog: Catalog,
+    *,
+    locales: list[str],
+    namespaces: list[str],
+) -> dict[str, set[str]]:
+    """Per locale, the keys whose target value is absent or empty (``--only-missing``).
+
+    Same shape as ``only_keys``. Keys the source itself leaves empty or the
+    project skips are not gaps.
+    """
+    from ..catalog.state import state_key
+
+    out: dict[str, set[str]] = {}
+    for ns in namespaces:
+        source = catalog.load(cfg.source_locale, ns)
+        for locale in locales:
+            target = catalog.load(locale, ns)
+            for key, value in source.items():
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                if cfg.is_skipped(ns, key, value):
+                    continue
+                current = target.get(key)
+                if not isinstance(current, str) or not current.strip():
+                    out.setdefault(locale, set()).add(state_key(ns, key))
+    return out
 
 
 def _order_locales(cfg: ProjectConfig, locales: list[str]) -> list[str]:
@@ -277,20 +326,6 @@ def _order_locales(cfg: ProjectConfig, locales: list[str]) -> list[str]:
 
 
 
-def _append_flag(
-    store: FlagStore,
-    locale: str,
-    namespace: str,
-    key: str,
-    reason: str,
-    *,
-    opened: set[tuple[str, str, str]] | None = None,
-) -> None:
-    store.append({
-        "locale": locale, "namespace": namespace, "key": key, "reason": reason,
-    })
-    if opened is not None:
-        opened.add((locale, namespace, key))
 
 
 def run_translation(
@@ -311,9 +346,13 @@ def run_translation(
     named_keys: list[str] | None = None,
     icu_only: bool = False,
     plain_only: bool = False,
+    only_missing: bool = False,
     report: Reporter = queue_report,
 ) -> TranslationResult:
-    """Translate everything that needs it. Returns a summary."""
+    """Translate everything that needs it. Returns a summary.
+
+    ``only_missing`` limits the run to keys whose target value is absent or empty.
+    """
     from ..catalog.flush_journal import flush_block_message
     from ..projects.context import require_context_json
     from .translate_icu import clear_fragment_cache
@@ -347,12 +386,35 @@ def run_translation(
             for raw in named_keys
         ]
         only_keys = {loc: set(resolved) for loc in targets}
+    if only_missing:
+        gaps = missing_keys(cfg, catalog, locales=targets, namespaces=ns_list)
+        if only_keys is None:
+            only_keys = gaps
+        else:
+            only_keys = {
+                loc: keys & gaps.get(loc, set()) for loc, keys in only_keys.items()
+            }
+        if not any(only_keys.values()):
+            report("(100%) No missing keys - nothing to do.")
+            return TranslationResult()
 
     held: list[WorkItem] = []
+    unrecorded: list[WorkItem] = []
     work = collect_work(
         cfg, catalog, state,
         locales=targets, namespaces=ns_list, force=force, only_keys=only_keys, held=held,
+        unrecorded=unrecorded,
     )
+    if unrecorded:
+        by_locale: dict[str, int] = {}
+        for item in unrecorded:
+            by_locale[item.locale] = by_locale.get(item.locale, 0) + 1
+        report(
+            "left as is: "
+            + ", ".join(f"{loc} {n}" for loc, n in sorted(by_locale.items()))
+            + " existing translation(s) with no state record; "
+            "run `adopt` to record them, or --force / --keys to retranslate"
+        )
     if held and not dry_run:
         from .tiers import ticket_held
 
@@ -682,639 +744,110 @@ def _note_flush_skips(st: _Run, flushed) -> None:
             st.result.written -= 1
 
 
-@dataclass
-class _Loc:
-    """Per-locale (and per-batch glossary) context."""
-    locale: Any = None
-    model: Any = None
-    loc_provider: Any = None
-    language: Any = None
-    register: Any = None
-    glossary_block: Any = None
-    score_llm: Any = None
-    cloud_kind: Any = None
-    # Model last warmed by a secondary pass; None means the primary is warm.
-    warm: Any = None
-
-def _try_glossary_answer(st: _Run, lc: _Loc, item) -> bool:
-    """A label that is one glossary term gets the approved word, no model (ADR-128)."""
-    from ..core.validate import glossary_answer
-
-    item_glossary = _item_glossary(st.cfg, st.notes, item)
-    trigger = "glossary"
-    answer = None
-    # A person-approved translation in the key's context entry wins (ADR-137):
-    # {"card.name": {"note": "...", "approved": {"pl": "{rank} {suit}"}}}. It still
-    # passes the candidate gate, so a stale entry (source changed) is not written.
-    entry = st.notes.entry(item.namespace, item.key)
-    approved = entry.get("approved") if isinstance(entry, dict) else None
-    if isinstance(approved, dict) and isinstance(approved.get(lc.locale), str):
-        from .candidates import validate_candidate
-
-        answer, _why = validate_candidate(item.source, approved[lc.locale], lc.locale, item_glossary)
-        trigger = "context"
-    if not answer:
-        answer = glossary_answer(item.source, item_glossary, lc.locale)
-        trigger = "glossary"
-    if not answer:
-        return False
-    locale = lc.locale
-    prev = st.catalog.load(locale, item.namespace).get(item.key)
-    st.done += 1
-    if prev == answer and not st.force:
-        return True
-    record_candidate(
-        state=st.state, scores=st.scores, history=st.history,
-        locale=locale, namespace=item.namespace, key=item.key,
-        source=item.source, previous=prev, text=answer, model=trigger,
-        quality_score=1.0, quality_signals=[f"{trigger} approved translation"],
-        trigger=trigger, provider=trigger, scorer="heuristic",
-        pending_history=st.pending_history,
-        **st.notes.stale_args(item.namespace, item.key),
-    )
-    st.queue_write(item, answer)
-    st.result.touched.add((item.namespace, locale))
-    st.result.written += 1
-    st.report(f"    {trigger.upper()}: {item.namespace}.{item.key}/{locale} -> {answer}")
-    return True
-
-
-def _try_tm_hit(st: _Run, lc: _Loc, item) -> bool:
-    """Serve ``item`` from an exact TM hit; True when it was consumed (written or skipped)."""
-    cfg = st.cfg
-    catalog = st.catalog
-    state = st.state
-    history = st.history
-    scores = st.scores
-    tm = st.tm
-    notes = st.notes
-    result = st.result
-    report = st.report
-    force = st.force
-    only_keys = st.only_keys
-    trigger = st.trigger
-    work = st.work
-    pending = st.pending
-    pending_history = st.pending_history
-    target_cache = st.target_cache
-    native_notes = st.native_notes
-    locale = lc.locale
-    model = lc.model
-    context = _item_context(notes, native_notes.get(item.namespace), item)
-    if not force:
-        hit = tm.exact(locale, item.source, context=context)
-        if hit and (hit.text or "").strip():
-            item_glossary = _item_glossary(cfg, notes, item)
-            accepted, reason = _candidate(cfg, 
-                item.source, hit.text, locale, item_glossary,
-                check_html=True if notes.html(item.namespace, item.key) else None,
-            )
-            if accepted is not None:
-                entry_now = state.entry(locale, item.namespace, item.key)
-                if not accept_allowed(
-                    item.source, entry_now,
-                    force=force, allow_current=only_keys is not None,
-                    context=notes.stale_args(item.namespace, item.key),
-                ):
-                    st.done += 1
-                    return True
-                st.done += 1
-                report_progress(
-                    st.done, len(work),
-                    f"{item.namespace}.{item.key} -> {item.locale} (tm)",
-                )
-                report_metric(done=st.done, total=len(work))
-                st.consecutive_fail = 0
-                prev = catalog.load(locale, item.namespace).get(item.key)
-                record_candidate(
-                    state=state, scores=scores, history=history,
-                    locale=locale, namespace=item.namespace, key=item.key,
-                    source=item.source, previous=prev, text=accepted,
-                    model=hit.model or model,
-                    quality_score=(
-                        hit.quality_score
-                        if hit.quality_score is not None
-                        else 0.0
-                    ),
-                    quality_signals=(
-                        ["tm exact hit"]
-                        if hit.quality_score is not None
-                        else ["tm exact hit", "tm unscored"]
-                    ),
-                    trigger="tm-hit",
-                    provider=hit.provider or "import",
-                    scorer="tm" if hit.quality_score is not None else "heuristic",
-                    pending_history=pending_history,
-                    **notes.stale_args(item.namespace, item.key),
-                )
-                st.queue_write(item, accepted)
-                result.touched.add((item.namespace, locale))
-                result.written += 1
-                st.tm_hits += 1
-                report(
-                    f"    TM HIT: {item.namespace}.{item.key}/{locale}"
-                )
-                return True
-    return False
 
 
 
-def _split_blocked(st: _Run, lc: _Loc, llm_items, payloads):
-    """Report and ticket needs_context items; return the items still to translate."""
-    cfg = st.cfg
-    result = st.result
-    report = st.report
-    work = st.work
-    flag_store = st.flag_store
-    flags_opened = st.flags_opened
-    locale = lc.locale
-    review_q = open_review_queue(cfg)
-    active_items: list[WorkItem] = []
-    active_payloads: list = []
-    blocked_tickets: list[dict] = []
-    for item, payload in zip(llm_items, payloads):
-        if payload.block_translate:
-            reasons = ",".join(payload.incomplete or ["needs_context"])
-            report(
-                f"    BLOCK needs_context: {item.namespace}.{item.key}/{locale} "
-                f"-- {reasons}"
-            )
-            blocked_tickets.append({
-                "locale": locale,
-                "namespace": item.namespace,
-                "key": item.key,
-                "reason": f"needs_context:{reasons}",
-                "source": item.source,
-                "status": STATUS_BLOCKED,
-            })
-            _append_flag(
-                flag_store, locale, item.namespace, item.key,
-                f"needs_context:{reasons}",
-                opened=flags_opened,
-            )
-            st.done += 1
-            report_progress(
-                st.done, len(work),
-                f"{item.namespace}.{item.key} -> {item.locale} (needs_context)",
-            )
-            result.blocked.append(f"{locale}/{item.namespace}.{item.key}")
-            continue
-        active_items.append(item)
-        active_payloads.append(payload)
-    review_q.enqueue_many(blocked_tickets)
-    llm_items = active_items
-    payloads = active_payloads
-    return llm_items, payloads
-
-
-
-def _dual_candidate(st: _Run, lc: _Loc, idx: int, item, translated, quality,
-                    item_glossary, max_chars, payloads):
-    """Optionally generate a secondary-model candidate; return the winner.
-
-    Returns ``(translated, quality, used_model, candidates_payload)``."""
-    cfg = st.cfg
-    notes = st.notes
-    report = st.report
-    locale = lc.locale
-    model = lc.model
-    loc_provider = lc.loc_provider
-    language = lc.language
-    register = lc.register
-    glossary_block = lc.glossary_block
-    score_llm = lc.score_llm
-    cloud_kind = lc.cloud_kind
-    used_model = model
-    candidates_payload: list[dict] | None = None
-    role = cfg.role_for(locale)
-    if not cloud_kind and needs_secondary_pass(
-        cfg, locale,
-        source=item.source, translated=translated,
-        quality=quality, role=role,
-    ):
-        secondary_model = role.secondary
-        assert secondary_model  # guarded by needs_secondary_pass
-        report(
-            f"    dual-candidate secondary={secondary_model} "
-            f"for {item.namespace}.{item.key}/{locale}"
-        )
-        if lc.warm != secondary_model:
-            # Warm once and stay: swapping back per item reloads both models
-            # for every key. The primary is re-warmed at the next batch.
-            # Unload the resident primary first — on 6 GiB GPUs, loading the
-            # secondary while aya is still pinned often kills Ollama.
-            from ..providers.residency import ResidencyTracker, switch
-
-            tracker = ResidencyTracker(lc.warm or model)
-            switch(
-                loc_provider, to=secondary_model, tracker=tracker, report=report,
-            )
-            lc.warm = secondary_model if secondary_model != model else None
-        payload = payloads[idx]
-        sec = _translate_payload(
-            loc_provider, payload, language, locale, secondary_model,
-            cfg, glossary_block, register, report,
-            glossary=item_glossary, n_samples=1,
-            threshold=improve_score_cut(cfg, scorer=quality.scorer, locale=locale),
-            llm_score=score_llm,
-        )
-        secondary_rec: CandidateRecord | None = None
-        if sec:
-            sec, _reason = _candidate(cfg, 
-                item.source, sec, locale, item_glossary,
-                placeholder_mask=payload.placeholder_mask,
-                frame_samples=payload.frame_samples,
-                check_html=True if payload.html else None,
-            )
-            if sec is not None:
-                if max_chars and len(sec) > max_chars:
-                    sec = _shorten(
-                        loc_provider, item, sec, language, max_chars,
-                        secondary_model, cfg, glossary_block, notes,
-                        register, report,
-                        glossary=item_glossary,
-                        check_html=True if payload.html else None,
-                    )
-                sec = apply_soft_hyphens(sec, locale)
-                sec_quality = score_candidate(
-                    loc_provider,
-                    source=item.source, translated=sec, locale=locale,
-                    language=language, glossary=item_glossary, cfg=cfg,
-                    max_chars=max_chars,
-                    message_key=payload.message_key,
-                    context=payload.context,
-                    llm_score=score_llm,
-                )
-                secondary_rec = CandidateRecord(
-                    text=sec,
-                    model=secondary_model,
-                    score=sec_quality.score,
-                    provider=cfg.provider_kind_for(locale),
-                    signals=list(sec_quality.signals),
-                )
-        primary_rec = CandidateRecord(
-            text=translated,
-            model=model,
-            score=quality.score,
-            provider=cfg.provider_kind_for(locale),
-            signals=list(quality.signals),
-        )
-        winner, cand_payload = pick_better(primary_rec, secondary_rec)
-        candidates_payload = (
-            cand_payload if secondary_rec is not None else None
-        )
-        if winner.model != used_model or winner.text != translated:
-            translated = winner.text
-            used_model = winner.model
-            if secondary_rec is not None and winner.model == secondary_model:
-                quality = sec_quality
-    return translated, quality, used_model, candidates_payload
-
-
-def _process_translation(st: _Run, lc: _Loc, idx: int, item, translated, llm_items, payloads) -> bool:
-    """Validate, score, and record one generated translation; True means abort the run."""
-    cfg = st.cfg
-    catalog = st.catalog
-    state = st.state
-    history = st.history
-    scores = st.scores
-    tm = st.tm
-    notes = st.notes
-    result = st.result
-    report = st.report
-    force = st.force
-    only_keys = st.only_keys
-    trigger = st.trigger
-    pre_translate = st.pre_translate
-    defer_scoring = st.defer_scoring
-    n_samples = st.n_samples
-    work = st.work
-    pending = st.pending
-    pending_history = st.pending_history
-    target_cache = st.target_cache
-    flag_store = st.flag_store
-    flags_opened = st.flags_opened
-    phase_a_written = st.phase_a_written
-    max_consec = st.max_consec
-    locale = lc.locale
-    model = lc.model
-    loc_provider = lc.loc_provider
-    language = lc.language
-    register = lc.register
-    glossary_block = lc.glossary_block
-    score_llm = lc.score_llm
-    cloud_kind = lc.cloud_kind
-    st.done += 1
-    report_progress(st.done, len(work), f"{item.namespace}.{item.key} -> {item.locale}")
-    report_metric(done=st.done, total=len(work))
-
-    item_glossary = _item_glossary(cfg, notes, item)
-
-    secondary = None if cloud_kind else cfg.secondary_model_for(locale)
-    if secondary == model:
-        secondary = None
-
-    def _escalate(why: str) -> tuple[str | None, str | None]:
-        """Whole-message retry with the locale's secondary model (ADR-21)."""
-        if not secondary:
-            return None, why
-        report(f"    ESCALATE: {item.namespace}.{item.key}/{locale} -> {secondary} -- {why}")
-        if icu_choice:
-            # Plural/select: the secondary gets the ICU whole-message prompt (ADR-124).
-            out, why2, _dead = _translate_icu_whole(
-                loc_provider, payloads[idx], language, locale, secondary, cfg,
-                glossary_block, register, report, glossary=item_glossary, rejection=why,
-            )
-        else:
-            out, why2 = _retry_rejected(
-                loc_provider, payloads[idx], why, language, locale, secondary, cfg,
-                glossary_block, register, report, glossary=item_glossary,
-            )
-        if out is not None:
-            result.escalated.append(f"{locale}/{item.namespace}.{item.key}")
-        return out, why2
-
-    icu_choice = uses_icu(getattr(cfg, "catalog_standard", None)) and has_icu_choice(item.source)
-    if translated is None and payloads[idx].icu_failure is not None:
-        # The ICU route already tried the whole message and then fragments on the
-        # primary model (ADR-124); only the secondary model is left. A final failure
-        # is flagged icu_failed, not counted as a provider error, and does not
-        # count toward the consecutive-reject breaker.
-        translated, reason = _escalate(payloads[idx].icu_failure)
-        if translated is None:
-            report(f"    SKIP (icu_failed): {item.namespace}.{item.key}/{locale} -- {reason}")
-            result.icu_failed.append(f"{locale}/{item.namespace}.{item.key}")
-            _append_flag(
-                flag_store, locale, item.namespace, item.key, ICU_FAILED,
-                opened=flags_opened,
-            )
-            return False
-    elif translated is None:
-        # Soft skip (empty provider slot, provider error). Retry once, then the
-        # secondary model, before giving up. A skip does not count toward the
-        # consecutive-reject breaker.
-        why = "the previous attempt returned nothing; translate the whole message"
-        translated, reason = _retry_rejected(
-            loc_provider, payloads[idx], why, language, locale, model, cfg,
-            glossary_block, register, report, glossary=item_glossary,
-        )
-        if translated is None:
-            translated, reason = _escalate(reason or why)
-        if translated is None:
-            report(f"    SKIP (provider): {item.namespace}.{item.key}/{locale} -- {reason}")
-            result.skipped.append(f"{locale}/{item.namespace}.{item.key}")
-            return False
-    else:
-        translated, reason = _candidate(cfg,
-            item.source, translated, locale, item_glossary,
-            placeholder_mask=payloads[idx].placeholder_mask,
-            frame_samples=payloads[idx].frame_samples,
-            check_html=True if payloads[idx].html else None,
-        )
-        if (translated is None and reason and uses_icu(getattr(cfg, "catalog_standard", None))
-                and needs_icu_decomposition(item.source)):
-            # A long ICU message rejected by the per-key gate (e.g. a forbidden term the
-            # batch glossary lacked): a whole-text retry drops arguments, so go back
-            # through the ICU strategies with this key's glossary (ADR-132).
-            from .translate_items import _translate_icu_message
-
-            report(f"    RETRY (ICU): {item.namespace}.{item.key}/{locale} -- {reason}")
-            retried = _translate_icu_message(
-                loc_provider, payloads[idx], language, locale, model, cfg, glossary_block,
-                register, report, glossary=item_glossary,
-            )
-            if retried is not None:
-                translated, reason = retried, None
-        if translated is None and reason:
-            report(f"    RETRY: {item.namespace}.{item.key}/{locale} -- {reason}")
-            translated, reason = _retry_rejected(
-                loc_provider, payloads[idx], reason, language, locale, model, cfg,
-                glossary_block, register, report, glossary=item_glossary,
-            )
-        if translated is None and reason:
-            translated, reason = _escalate(reason)
-    if translated is not None and getattr(cfg, "translate_soft_retry", True):
-        translated = _soft_retry(
-            loc_provider, payloads[idx], item, translated, item_glossary,
-            language, locale,
-            model, cfg, glossary_block, register, report,
-        )
-    if translated is None:
-        report(f"    REJECT: {item.namespace}.{item.key}/{locale} -- {reason}")
-        result.rejected.append(f"{locale}/{item.namespace}.{item.key}")
-        st.consecutive_fail += 1
-        if max_consec and st.consecutive_fail >= max_consec:
-            report(
-                f"abort: {st.consecutive_fail} consecutive rejects/skips — "
-                "check model/prompt (missing pin, wrong model, or few-shot bleed)"
-            )
-            result.aborted = True
-            st.abort_run = True
-            return True
-        return False
-
-    st.consecutive_fail = 0
-
-    max_chars = notes.max_chars(item.namespace, item.key)
-    warn = check_translation_length(item.source, translated, locale, max_chars)
-    if warn:
-        report(f"    WARN: {item.namespace}.{item.key}/{locale} -- {warn}")
-
-    long_candidate = translated
-    if max_chars and len(translated) > max_chars:
-        translated = _shorten(
-            loc_provider, item, translated, language, max_chars, model,
-            cfg, glossary_block, notes, register, report,
-            glossary=item_glossary,
-            check_html=True if payloads[idx].html else None,
-        )
-
-    translated = apply_soft_hyphens(translated, locale)
-
-    full_key = notes.full_key(item.namespace, item.key)
-    unshortened_meta: list[dict] | None = None
-    if (
-        full_key
-        and max_chars
-        and locale in getattr(cfg, "length_sensitive", ["de"])
-        and long_candidate != translated
-    ):
-        # Keep the unshortened string in history metadata only —
-        # never write a sibling fullKey via this short-key path.
-        unshortened_meta = [{
-            "role": "unshortened",
-            "fullKey": full_key,
-            "text": long_candidate,
-        }]
-
-    prev = catalog.load(locale, item.namespace).get(item.key)
-    if pre_translate:
-        entry_now = state.entry(locale, item.namespace, item.key)
-        if not accept_allowed(
-            item.source, entry_now,
-            force=force, allow_current=only_keys is not None,
-            context=notes.stale_args(item.namespace, item.key),
-        ):
-            report(
-                f"    SKIP {item.namespace}.{item.key}/{locale}: "
-                "no longer needs write (verified or already current)"
-            )
-            return False
-        record_candidate(
-            state=state, scores=scores, history=history,
-            locale=locale, namespace=item.namespace, key=item.key,
-            source=item.source, previous=prev, text=translated,
-            model=model, quality_score=0.0, quality_signals=[],
-            trigger="pre-translate", status="machine",
-            provider=cfg.provider_kind_for(locale),
-            pending_history=pending_history,
-            record_score=False,
-            **notes.stale_args(item.namespace, item.key),
-        )
-        st.queue_write(item, translated)
-        result.touched.add((item.namespace, locale))
-        result.written += 1
-        return False
-    quality = score_candidate(
-        loc_provider,
-        source=item.source, translated=translated, locale=locale,
-        language=language, glossary=item_glossary, cfg=cfg,
-        max_chars=max_chars,
-        message_key=(
-            f"{item.namespace}.{item.key}" if item.namespace else item.key
-        ),
-        context=payloads[idx].context,
-        llm_score=score_llm,
+def _start_manifest(cfg, work, pin_model, resume_locales) -> RunManifest:
+    """The run manifest for one translate job (locales, pinned model, prompt family, config fingerprint)."""
+    return RunManifest.start(
+        command="translate",
+        locales=sorted({item.locale for item in work} or set(resume_locales)),
+        model=pin_model,
+        prompt_family=cfg.prompt_family_for(
+            work[0].locale if work else (resume_locales[0] if resume_locales else "")
+        ) if (work or resume_locales) else None,
+        config_hash=config_fingerprint({
+            "domain": cfg.domain,
+            "models": dict(getattr(cfg, "models", {}) or {}),
+            "judge_model": getattr(cfg, "judge_model", None),
+            "prompt_family": getattr(cfg, "prompt_family", None),
+        }),
+        source_locale=cfg.source_locale,
     )
 
-    cut = improve_score_cut(cfg, scorer=quality.scorer, locale=locale)
-    if len(llm_items) > 1 and quality.score < cut:
-        payload = payloads[idx]
-        alt = _translate_payload(
-            loc_provider, payload, language, locale, model, cfg,
-            glossary_block, register, report,
-            glossary=item_glossary, n_samples=n_samples, threshold=cut,
-            llm_score=score_llm,
-        )
-        if alt:
-            alt, reason = _candidate(cfg, 
-                item.source, alt, locale, item_glossary,
-                placeholder_mask=payload.placeholder_mask,
-                frame_samples=payload.frame_samples,
-                check_html=True if payload.html else None,
-            )
-            if alt is not None:
-                alt_quality = score_candidate(
-                    loc_provider,
-                    source=item.source, translated=alt, locale=locale,
-                    language=language, glossary=item_glossary, cfg=cfg,
-                    max_chars=max_chars,
-                    message_key=payload.message_key,
-                    context=payload.context,
-                    llm_score=score_llm,
-                )
-                if alt_quality.score > quality.score:
-                    translated, quality = alt, alt_quality
 
-    translated, quality, used_model, candidates_payload = _dual_candidate(
-        st, lc, idx, item, translated, quality, item_glossary, max_chars, payloads,
-    )
+def _finish_run(
+    *, cfg, catalog, notes, state, st, result, work, scores, glossary, manifest, run_started, pin_model,
+    pending_bt_resume, phase_a_written, flag_store, defer_scoring, batch_size, trigger, report, provider_for,
+    prefetcher=None,
+) -> None:
+    """End of a translation run: the last flush, deferred back-translation scoring (phase 2), review tickets, the
+    summary lines, the run manifest and the flush-journal cleanup."""
+    phase_a_s: float | None = None
+    phase_b_s: float | None = None
+    phase_b_scored = 0
+    _flush_step(st)
 
-    cut = improve_score_cut(cfg, scorer=quality.scorer, locale=locale)
-    if quality.score < cut and not defer_scoring:
-        reason = quality.signals[0] if quality.signals else "low quality score"
-        _append_flag(
-            flag_store, locale, item.namespace, item.key, reason,
-            opened=flags_opened,
-        )
-        result.flagged_low_score.append(f"{locale}/{item.namespace}.{item.key}")
-        report(f"    LOW SCORE {quality.score:.2f}: {reason}")
-
-    if not defer_scoring:
-        held = hold_reason(
-            cfg, source=item.source, previous=prev,
-            entry=state.entry(locale, item.namespace, item.key),
-            old_score=scores.get(locale, item.namespace, item.key),
-            text=translated, quality=quality,
-        )
-        if held:
-            hold_as_draft(
-                cfg, locale=locale, namespace=item.namespace, key=item.key,
-                source=item.source, text=translated, score=quality.score,
-                model=used_model, reason=held,
-            )
-            result.held.append(f"{locale}/{item.namespace}.{item.key}")
-            report(f"    HOLD {item.namespace}.{item.key}/{locale}: {held} (kept as draft)")
-            return False
-
-    hist_candidates = candidates_payload
-    if unshortened_meta:
-        hist_candidates = list(candidates_payload or []) + unshortened_meta
-
-    entry_now = state.entry(locale, item.namespace, item.key)
-    if not accept_allowed(
-        item.source, entry_now,
-        force=force, allow_current=only_keys is not None,
-        context=notes.stale_args(item.namespace, item.key),
-    ):
-        report(
-            f"    SKIP {item.namespace}.{item.key}/{locale}: "
-            "no longer needs write (verified or already current)"
-        )
-        return False
-    fresh = catalog.load(locale, item.namespace).get(item.key)
-    if (
-        item.current and isinstance(fresh, str) and fresh != item.current
-        and item.key not in pending.get((item.namespace, locale), {})
-    ):
-        report(
-            f"    SKIP {item.namespace}.{item.key}/{locale}: "
-            "target was edited outside the run; run adopt to keep it"
-        )
-        result.external_edit.append(f"{locale}/{item.namespace}.{item.key}")
-        return False
-
-    quality = with_consistency(quality, payloads[idx].sample_consistency)
-    entry = record_candidate(
-        state=state, scores=scores, history=history,
-        locale=locale, namespace=item.namespace, key=item.key,
-        source=item.source, previous=prev, text=translated,
-        model=used_model, quality_score=quality.score,
-        quality_signals=quality.signals, trigger=trigger,
-        provider=cfg.provider_kind_for(locale),
-        dimensions=quality.dimensions, scorer=quality.scorer,
-        candidates=hist_candidates,
-        pending_history=pending_history,
-        **notes.stale_args(item.namespace, item.key),
-    )
-    tm.record(
-        locale=locale,
-        source=item.source,
-        text=translated,
-        model=used_model,
-        context=payloads[idx].context,
-        provider=cfg.provider_kind_for(locale),
-        quality_score=quality.score,
-        verified=bool(entry.get("verified_at")),
-    )
-
-    st.queue_write(item, translated)
-    result.touched.add((item.namespace, locale))
-    result.written += 1
     if defer_scoring:
-        phase_a_written.append(PendingScoreItem(
-            locale=locale,
-            namespace=item.namespace,
-            key=item.key,
-            source=item.source,
-            translated=translated,
-            max_chars=max_chars,
-            message_key=(
-                f"{item.namespace}.{item.key}" if item.namespace else item.key
-            ),
-            context=payloads[idx].context,
-        ))
-    return False
+        written_keys = {
+            (p.locale, p.namespace, p.key) for p in phase_a_written
+        }
+        phase_b_items = list(phase_a_written) + [
+            p for p in pending_bt_resume
+            if (p.locale, p.namespace, p.key) not in written_keys
+        ]
+        if phase_b_items:
+            phase_b_start = time.perf_counter()
+            if work:
+                phase_a_s = round(phase_b_start - run_started, 3)
+            bt_provider = (
+                prefetcher.provider if prefetcher is not None
+                else _bt_provider(cfg, phase_b_items[0].locale, provider_for, report)
+            )
+            with log_heartbeat(
+                f"phase 2 BT scoring {len(phase_b_items)} key(s)",
+                reporter=report,
+            ):
+                phase_b_scored = run_deferred_scoring_phase(
+                    cfg, bt_provider, scores, glossary, phase_b_items,
+                    pin_model=pin_model, report=report, flag_store=flag_store, prefetcher=prefetcher,
+                )
+            phase_b_s = round(time.perf_counter() - phase_b_start, 3)
+            report(f"phase 2 complete: scored {phase_b_scored} key(s)")
+    elif work:
+        phase_a_s = round(time.perf_counter() - run_started, 3)
+
+    if work and result.written:
+        from .tiers import ticket_reviewed
+
+        ticket_reviewed(cfg, notes, work, state, report)
+
+    for ns, locale in sorted(result.touched):
+        report(f"  OK {catalog.path_for(locale, ns)} - updated")
+
+    report(_summary_line(result))
+    try:
+        manifest.bump("written", result.written)
+        manifest.bump("rejected", len(result.rejected))
+        manifest.finish(
+            written=result.written,
+            total=result.total,
+            rejected=len(result.rejected),
+            skipped=len(result.skipped),
+            icu_failed=len(result.icu_failed),
+            blocked=len(result.blocked),
+            flagged_low_score=len(result.flagged_low_score),
+            external_edit=len(result.external_edit),
+            tm_hits=st.tm_hits,
+            llm_keys=max(0, result.written - st.tm_hits),
+            defer_scoring=defer_scoring,
+            batch_size=batch_size,
+            short_batch=bool(getattr(cfg, "translate_short_batch", False)),
+            score_model=score_model_for(cfg) if defer_scoring else None,
+            phase_a_s=phase_a_s,
+            phase_b_s=phase_b_s,
+            phase_b_scored=phase_b_scored,
+            trigger=trigger,
+        )
+        manifest.write(cfg.state_root())
+        report_run_summary(manifest)
+    except OSError:
+        pass
+    # Clean end: drop progress checkpoint so the next run starts fresh.
+    try:
+        FlushJournal(cfg.state_root()).clear()
+    except OSError:
+        pass
 
 
 
@@ -1355,26 +888,9 @@ def _run_translation_locked(
         work, model_for=lambda item: cfg.model_for(item.locale), fallback=pin_model,
     )
     resume_locales = sorted({p.locale for p in (pending_bt_resume or [])})
-    manifest = RunManifest.start(
-        command="translate",
-        locales=sorted({item.locale for item in work} or set(resume_locales)),
-        model=pin_model,
-        prompt_family=cfg.prompt_family_for(
-            work[0].locale if work else (resume_locales[0] if resume_locales else "")
-        ) if (work or resume_locales) else None,
-        config_hash=config_fingerprint({
-            "domain": cfg.domain,
-            "models": dict(getattr(cfg, "models", {}) or {}),
-            "judge_model": getattr(cfg, "judge_model", None),
-            "prompt_family": getattr(cfg, "prompt_family", None),
-        }),
-        source_locale=cfg.source_locale,
-    )
+    manifest = _start_manifest(cfg, work, pin_model, resume_locales)
     manifest.bump("work", len(work))
     run_started = time.perf_counter()
-    phase_a_s: float | None = None
-    phase_b_s: float | None = None
-    phase_b_scored = 0
     # Surface interrupted prior flush for operators.
     interrupted = FlushJournal(cfg.state_root()).interrupted()
     if interrupted is not None:
@@ -1388,6 +904,9 @@ def _run_translation_locked(
         probe.ensure_ready(pin_model, report=report)
     llm_score = not defer_scoring
     phase_a_written: list[PendingScoreItem] = []
+    prefetcher_box: list = [None]  # BtPrefetcher, once the first locale group has finished
+    prefetcher_off = [False]
+    seen_written = [0]
     pending_bt_resume = list(pending_bt_resume or [])
     if len(run_models) > 1:
         report(
@@ -1612,75 +1131,32 @@ def _run_translation_locked(
             _flush_step(st)
 
         _drain_cloud_async()
+        # Overlap (cloud scorer, several locale groups): start back-translating what this group
+        # just produced while the next group translates. Scoring itself stays in phase B.
+        if defer_scoring and cloud_kind and len(groups) > 1 and not st.abort_run:
+            fresh = phase_a_written[seen_written[0]:]
+            seen_written[0] = len(phase_a_written)
+            if fresh and not prefetcher_off[0]:
+                if prefetcher_box[0] is None:
+                    from .scoring import BtPrefetcher, _CLOUD_SCORER_KINDS
 
-    _flush_step(st)
+                    bt_provider = _bt_provider(cfg, fresh[0].locale, _provider_for, report)
+                    if (getattr(bt_provider, "kind", "") in _CLOUD_SCORER_KINDS
+                            and int(getattr(cfg, "bt_workers", 4) or 1) > 1):
+                        prefetcher_box[0] = BtPrefetcher(cfg, bt_provider, score_model_for(cfg), report)
+                    else:
+                        prefetcher_off[0] = True
+                if prefetcher_box[0] is not None:
+                    prefetcher_box[0].submit(fresh)
 
-    if defer_scoring:
-        written_keys = {
-            (p.locale, p.namespace, p.key) for p in phase_a_written
-        }
-        phase_b_items = list(phase_a_written) + [
-            p for p in pending_bt_resume
-            if (p.locale, p.namespace, p.key) not in written_keys
-        ]
-        if phase_b_items:
-            phase_b_start = time.perf_counter()
-            if work:
-                phase_a_s = round(phase_b_start - run_started, 3)
-            bt_provider = _bt_provider(cfg, phase_b_items[0].locale, _provider_for, report)
-            with log_heartbeat(
-                f"phase 2 BT scoring {len(phase_b_items)} key(s)",
-                reporter=report,
-            ):
-                phase_b_scored = run_deferred_scoring_phase(
-                    cfg, bt_provider, scores, glossary, phase_b_items,
-                    pin_model=pin_model, report=report, flag_store=flag_store,
-                )
-            phase_b_s = round(time.perf_counter() - phase_b_start, 3)
-            report(f"phase 2 complete: scored {phase_b_scored} key(s)")
-    elif work:
-        phase_a_s = round(time.perf_counter() - run_started, 3)
-
-    if work and result.written:
-        from .tiers import ticket_reviewed
-
-        ticket_reviewed(cfg, notes, work, state, report)
-
-    for ns, locale in sorted(result.touched):
-        report(f"  OK {catalog.path_for(locale, ns)} - updated")
-
-    report(_summary_line(result))
-    try:
-        manifest.bump("written", result.written)
-        manifest.bump("rejected", len(result.rejected))
-        manifest.finish(
-            written=result.written,
-            total=result.total,
-            rejected=len(result.rejected),
-            skipped=len(result.skipped),
-            icu_failed=len(result.icu_failed),
-            blocked=len(result.blocked),
-            flagged_low_score=len(result.flagged_low_score),
-            external_edit=len(result.external_edit),
-            tm_hits=st.tm_hits,
-            llm_keys=max(0, result.written - st.tm_hits),
-            defer_scoring=defer_scoring,
-            batch_size=batch_size,
-            short_batch=bool(getattr(cfg, "translate_short_batch", False)),
-            score_model=score_model_for(cfg) if defer_scoring else None,
-            phase_a_s=phase_a_s,
-            phase_b_s=phase_b_s,
-            phase_b_scored=phase_b_scored,
-            trigger=trigger,
-        )
-        manifest.write(cfg.state_root())
-        report_run_summary(manifest)
-    except OSError:
-        pass
-    # Clean end: drop progress checkpoint so the next run starts fresh.
-    try:
-        FlushJournal(cfg.state_root()).clear()
-    except OSError:
-        pass
+    _finish_run(
+        cfg=cfg, catalog=catalog, notes=notes, state=state, st=st, result=result, work=work, scores=scores,
+        glossary=glossary, manifest=manifest, run_started=run_started, pin_model=pin_model,
+        pending_bt_resume=pending_bt_resume, phase_a_written=phase_a_written, flag_store=flag_store,
+        defer_scoring=defer_scoring, batch_size=batch_size, trigger=trigger, report=report,
+        provider_for=_provider_for, prefetcher=prefetcher_box[0],
+    )
+    if prefetcher_box[0] is not None:
+        prefetcher_box[0].close()
     return result
 

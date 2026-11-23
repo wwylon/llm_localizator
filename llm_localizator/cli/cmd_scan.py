@@ -20,6 +20,7 @@ def run(args: argparse.Namespace) -> int:
         no_write=args.no_write,
         strict=args.strict,
         lint_directives=getattr(args, "lint_directives", False),
+        surface=getattr(args, "surface", None),
     ))
 
     if args.fmt == "github":

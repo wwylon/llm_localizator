@@ -8,15 +8,18 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
 
 from .base import CompletionRequest, Provider, ProviderError
 from .http_retry import urlopen_json
+from .keys import candidate_vars, resolve_api_key
 
 __all__ = ["AnthropicProvider"]
 
+VENDOR_VAR = "ANTHROPIC_API_KEY"
 DEFAULT_MODEL = "claude-haiku-5-5"
 API_URL = "https://api.anthropic.com/v1/messages"
 BATCHES_URL = "https://api.anthropic.com/v1/messages/batches"
@@ -52,6 +55,14 @@ def _text_from_message(body: dict) -> str:
     ).strip()
 
 
+def _batch_note(message: str) -> None:
+    """One progress line on stderr (never the key or the text being translated)."""
+    try:
+        print(message, file=sys.stderr, flush=True)
+    except OSError:
+        pass
+
+
 class AnthropicProvider(Provider):
     kind = "anthropic"
 
@@ -61,14 +72,24 @@ class AnthropicProvider(Provider):
         *,
         default_model: str = DEFAULT_MODEL,
         max_tokens: int = 4096,
+        api_key_env: str | None = None,
     ) -> None:
-        self.api_key = (api_key or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+        self.api_key_env = api_key_env
+        # None → read env; explicit "" stays empty (do not fall through to env).
+        if api_key is None:
+            self.api_key = resolve_api_key(VENDOR_VAR, api_key_env).strip()
+        else:
+            self.api_key = api_key.strip()
         self.default_model = default_model
         self.max_tokens = max_tokens
         self.last_usage: dict | None = None
 
     def __repr__(self) -> str:
         return f"AnthropicProvider(api_key='***', default_model={self.default_model!r})"
+
+    def _missing_key_message(self) -> str:
+        names = " or ".join(candidate_vars(VENDOR_VAR, self.api_key_env))
+        return f"Anthropic API key missing — set {names} in the environment"
 
     def _headers(self, *, batch: bool = False) -> dict[str, str]:
         betas = [CACHE_BETA]
@@ -117,9 +138,7 @@ class AnthropicProvider(Provider):
 
     def complete(self, request: CompletionRequest) -> str:
         if not self.api_key:
-            raise ProviderError(
-                "Anthropic API key missing — set ANTHROPIC_API_KEY in the environment"
-            )
+            raise ProviderError(self._missing_key_message())
         self.last_usage = None
         # Sync Messages: 5-minute ephemeral cache. Batch path uses 1h.
         ttl = str(request.options.get("cache_ttl") or "5m")
@@ -146,9 +165,7 @@ class AnthropicProvider(Provider):
         if len(requests) == 1:
             return [self.complete(requests[0])]
         if not self.api_key:
-            raise ProviderError(
-                "Anthropic API key missing — set ANTHROPIC_API_KEY in the environment"
-            )
+            raise ProviderError(self._missing_key_message())
         self.last_usage = None
         # Batch cache TTL is 1h so a long poll still reuses the prefix.
         entries = []
@@ -171,6 +188,13 @@ class AnthropicProvider(Provider):
             raise ProviderError("Anthropic Message Batch create returned no id")
         deadline = time.monotonic() + max(120, sum(max(30, r.timeout_s) for r in requests))
         poll_s = float(requests[0].options.get("batch_poll_s") or 2.0)
+        every_s = float(requests[0].options.get("batch_progress_s") or 30.0)
+        started = time.monotonic()
+        next_note = started
+        _batch_note(
+            f"Anthropic batch {batch_id}: {len(requests)} request(s) submitted. Batches run "
+            "asynchronously at about half price; expect minutes, not seconds."
+        )
         while True:
             if time.monotonic() > deadline:
                 raise ProviderError(f"Anthropic Message Batch {batch_id} timed out")
@@ -181,7 +205,16 @@ class AnthropicProvider(Provider):
             )
             status = urlopen_json(status_req, 60, "Anthropic")
             processing = status.get("processing_status") or ""
+            if processing != "ended" and time.monotonic() >= next_note:
+                next_note = time.monotonic() + every_s
+                counts = status.get("request_counts") or {}
+                done = sum(int(counts.get(k) or 0) for k in ("succeeded", "errored", "canceled", "expired"))
+                _batch_note(
+                    f"Anthropic batch {batch_id}: {processing or 'waiting'}, {done}/{len(requests)} done, "
+                    f"{int(time.monotonic() - started)}s elapsed"
+                )
             if processing == "ended":
+                _batch_note(f"Anthropic batch {batch_id}: ended after {int(time.monotonic() - started)}s")
                 break
             if processing in {"canceled", "expired"}:
                 raise ProviderError(

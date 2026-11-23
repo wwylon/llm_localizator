@@ -86,6 +86,7 @@ _DIRECT_COMMANDS: dict[str, tuple[str, str]] = {
         "web": ("cmd_web", "run"),
         "acknowledge-flush": ("cmd_acknowledge", "run"),
         "scan": ("cmd_scan", "run"),
+        "localize-project": ("cmd_localize_project", "run"),
         "migrate-state": ("cmd_migrate", "run"),
         "init": ("cmd_init", "run"),
         "approach": ("cmd_approach", "run"),

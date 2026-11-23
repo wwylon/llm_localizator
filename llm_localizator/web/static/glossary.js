@@ -108,7 +108,7 @@
           return response.json();
         });
     get.then(function (payload) {
-      if (!payload.ok) throw new Error(payload.error || "no glossary");
+      if (!payload.ok) throw new Error(payload.error || uiT("gl_no_glossary", "no glossary"));
       state.domains = payload.domains || {};
       state.locales = payload.locales || [];
       state.activeLocales = payload.activeLocales || state.locales.slice();
@@ -367,7 +367,7 @@
           kind: item.kind,
           term: item.term,
         }).then(function (data) {
-          if (!data.ok) throw new Error(data.error || "delete failed");
+          if (!data.ok) throw new Error(data.error || uiT("gl_delete_failed", "delete failed"));
           load();
         }).catch(function (err) {
           state.status = String(err.message || err);
@@ -404,7 +404,7 @@
     exportBtn.type = "button";
     exportBtn.addEventListener("click", function () {
       post("/api/ops/glossary-export", { format: "csv" }).then(function (data) {
-        if (!data.ok) throw new Error(data.summary || data.error || "export failed");
+        if (!data.ok) throw new Error(data.summary || data.error || uiT("gl_export_failed", "export failed"));
         var text = (data.data && data.data.text) || "";
         var blob = new Blob([text], { type: "text/csv;charset=utf-8" });
         var link = el("a", "", "glossary.csv");
@@ -441,7 +441,7 @@
           conflict: "skip",
           dry_run: true,
         }).then(function (data) {
-          if (!data.ok) throw new Error(data.summary || data.error || "import failed");
+          if (!data.ok) throw new Error(data.summary || data.error || uiT("gl_import_failed", "import failed"));
           var counts = data.data || {};
           state.importPending = { text: text, counts: counts };
           state.status = (data.summary || uiT("gloss_dry_run_ok", "Dry-run ok"))
@@ -471,7 +471,7 @@
           conflict: "skip",
           dry_run: false,
         }).then(function (data) {
-          if (!data.ok) throw new Error(data.summary || data.error || "import failed");
+          if (!data.ok) throw new Error(data.summary || data.error || uiT("gl_import_failed", "import failed"));
           state.importPending = null;
           state.status = data.summary || uiT("gloss_import_applied", "Import applied");
           load();
@@ -758,7 +758,7 @@
         forbidden: forbiddenMap,
         notes: notesMap,
       }).then(function (data) {
-        if (!data.ok) throw new Error(data.error || "save failed");
+        if (!data.ok) throw new Error(data.error || uiT("gl_save_failed", "save failed"));
         state.editing = null;
         state.modalShowAllLocales = false;
         overlay.remove();

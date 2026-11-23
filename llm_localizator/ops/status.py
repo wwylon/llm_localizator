@@ -20,6 +20,9 @@ class LocaleStatus:
     translated: int = 0
     stale: int = 0
     missing: int = 0
+    # Present in the target catalogue, differs from the source, but has no state record.
+    # Counted apart from ``missing``: the text exists, only the record is absent (run ``adopt``).
+    no_record: int = 0
     namespaces_missing: int = 0
     frozen: bool = False
     providers: dict[str, int] = field(default_factory=dict)
@@ -92,7 +95,11 @@ def collect(cfg, catalog) -> list[LocaleStatus]:
                     continue
                 entry = state.entry(locale, ns, key) if state else None
                 if entry is None:
-                    st.missing += 1
+                    value = target.get(key)
+                    if isinstance(value, str) and value.strip() and value != src:
+                        st.no_record += 1
+                    else:
+                        st.missing += 1
                 elif needs_translation(src, entry, **notes.stale_args(ns, key)):
                     st.stale += 1
                     provider_counts[provider_of(entry)] += 1
@@ -281,7 +288,9 @@ def op_status(cfg: ProjectConfig, req: StatusRequest, *, catalog=None) -> OpResu
     for r in rows:
         line = (
             f"{r.locale}{' (frozen)' if r.frozen else ''}: "
-            f"{r.coverage:.1%} ({r.translated} done, {r.stale} stale, {r.missing} missing)"
+            f"{r.coverage:.1%} ({r.translated} done, {r.stale} stale, {r.missing} missing"
+            + (f", {r.no_record} with text but no record" if r.no_record else "")
+            + ")"
         )
         if r.providers:
             prov = ", ".join(f"{k}={v}" for k, v in r.providers.items())

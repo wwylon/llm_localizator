@@ -489,6 +489,8 @@ def _cmd_translate(cfg: ProjectConfig, body: dict, report: Reporter | None) -> d
         icu_only=bool(body.get("icu_only") or body.get("icuOnly")),
         sample=body.get("sample") or None,
         plain_only=bool(body.get("plain_only") or body.get("plainOnly")),
+        only_missing=bool(body.get("only_missing") or body.get("onlyMissing")),
+        sync=bool(body.get("sync")),
     )
     # Align with apply/bulk-clear for *inline* runs. Queue-preferring paths
     # (tq on PATH, no inline) do not need confirm — the worker is the spend gate.
@@ -868,6 +870,7 @@ def _cmd_scan(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
         no_write=bool(body.get("no_write")),
         strict=bool(body.get("strict")),
         lint_directives=bool(body.get("lint_directives")),
+        surface=body.get("surface") or None,
     )).to_dict()
 
 

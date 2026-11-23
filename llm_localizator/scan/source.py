@@ -9,10 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..core.languages import language_for_suffix, source_languages
-from .base import Scanner, ScanResult, paths_with_suffixes
+from .base import Scanner, ScanResult, paths_with_suffixes, relative_posix
 from .literals import scan_literal_file
 from .next_intl import NextIntlScanner
 from .raw_js import RawJsScanner
+from .templates import TEXT_RESOURCE_DIRS
 
 __all__ = ["SourceScanner"]
 
@@ -31,11 +32,15 @@ class SourceScanner(Scanner):
 
     def iter_files(self):
         extensions = [ext for lang in source_languages() for ext in lang.extensions]
-        if self.content_globs:
-            extensions += [".yml", ".yaml"]  # declared YAML text files (``[scan] content_globs``)
+        # YAML: declared text files (``[scan] content_globs``) and ``mkdocs.yml`` (site name and navigation labels).
+        extensions += [".yml", ".yaml"]
         for path in paths_with_suffixes(self, [*extensions, ".txt"], skip_names=("i18n.js",)):
-            # A ``.txt`` file is read only inside a ``templates`` folder (Flask/Django e-mail bodies), never elsewhere.
-            if path.suffix.lower() != ".txt" or "templates" in (part.lower() for part in path.parts[:-1]):
+            if path.suffix.lower() in (".yml", ".yaml") and not (
+                self.content_globs or path.name.lower() in ("mkdocs.yml", "mkdocs.yaml")
+            ):
+                continue
+            # A ``.txt`` file is read only inside a templates or text-resource folder, never elsewhere.
+            if path.suffix.lower() != ".txt" or {part.lower() for part in path.parts[:-1]} & TEXT_RESOURCE_DIRS:
                 yield path
 
     def _delegate(self, cls):
@@ -73,6 +78,10 @@ class SourceScanner(Scanner):
             self._delegate(NextIntlScanner).scan_file(path, lines, result)
         elif lang.detector in {"js", "html"}:
             self._delegate(RawJsScanner).scan_file(path, lines, result)
+            if lang.detector == "html" and any("{{" in line for line in lines):
+                from .templates import scan_macro_call_text
+
+                scan_macro_call_text(relative_posix(path, self.root), "\n".join(lines), result)
         elif lang.detector == "xmlui":
             from .xmlui import scan_xmlui_file
 

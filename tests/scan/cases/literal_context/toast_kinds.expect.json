@@ -1,0 +1,4 @@
+{"adapter": "raw-js",
+ "must_hit": [{"text": "Settings saved", "min_conf": "high"}, {"text": "Could not reach the server", "min_conf": "high"},
+              {"text": "Queue paused", "min_conf": "high"}, {"text": "Failed to save the file", "min_conf": "high"}],
+ "must_not": ["info", "err", "warn", "error"]}

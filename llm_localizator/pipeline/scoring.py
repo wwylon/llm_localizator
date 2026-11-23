@@ -534,6 +534,116 @@ def _locale_batches(
     return out
 
 
+_CLOUD_SCORER_KINDS = frozenset({"anthropic", "openai", "deepseek", "openai_compat"})
+
+
+def _prefetch_back_translations(
+    provider: Provider,
+    cfg: ProjectConfig,
+    bt_model: str,
+    batches: list[tuple[int, list]],
+    workers: int,
+    report: Reporter,
+) -> dict[int, list[str | None] | None]:
+    """Back-translate the batches in parallel; ``{batch start: backs}``.
+
+    Each task gets its own shallow copy of the provider so ``last_usage`` (read by the spend
+    meter) is not shared between threads. A task that raises is left as ``None`` and the caller
+    redoes that batch inline, so a failure costs time, never a score.
+    """
+    import copy
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    todo = [(start, batch) for start, batch in batches if not judge_model_for(cfg, batch[0].locale)]
+    out: dict[int, list[str | None] | None] = {}
+    if not todo:
+        return out
+
+    def work(batch):
+        return backtranslate_batch(
+            copy.copy(provider), [item.translated for item in batch],
+            language_name(batch[0].locale), bt_model, cfg, bill_locale=batch[0].locale,
+        )
+
+    started = time.monotonic()
+    done_keys = 0
+    total_keys = sum(len(b) for _, b in todo)
+    report(f"back-translating {total_keys} key(s) in {len(todo)} request(s), {workers} at a time")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(work, batch): (start, batch) for start, batch in todo}
+        for future in as_completed(futures):
+            start, batch = futures[future]
+            try:
+                out[start] = future.result()
+            except Exception:  # noqa: BLE001 - redone inline by the caller
+                out[start] = None
+            done_keys += len(batch)
+            report(f"back-translated {done_keys}/{total_keys} key(s), {int(time.monotonic() - started)}s")
+    return out
+
+
+class BtPrefetcher:
+    """Back-translates finished translations in the background while later locales still translate.
+
+    Only the slow network calls move; scoring and every ScoreStore write stay on the main thread
+    in phase B, which asks :meth:`get` for a batch and falls back to an inline call when a batch
+    was not prefetched or its request failed. A prefetched answer is keyed by locale, key and the
+    exact translated text, so a text that changed after submission is never reused.
+    """
+
+    def __init__(self, cfg: ProjectConfig, provider: Provider, bt_model: str, report: Reporter) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.cfg, self.provider, self.bt_model, self.report = cfg, provider, bt_model, report
+        self.size = max(1, int(getattr(cfg, "bt_cloud_batch_size", 0)
+                               or getattr(cfg, "translate_cloud_batch_size", 0) or 50))
+        self._pool = ThreadPoolExecutor(max_workers=max(1, int(getattr(cfg, "bt_workers", 4) or 1)))
+        self._index: dict[tuple[str, str, str, str], tuple[object, int]] = {}
+        self.submitted = 0
+
+    @staticmethod
+    def _key(item: PendingScoreItem) -> tuple[str, str, str, str]:
+        return (item.locale, item.namespace, item.key, item.translated)
+
+    def submit(self, items: list[PendingScoreItem]) -> None:
+        import copy
+
+        todo = [i for i in items if (i.translated or "").strip() and not judge_model_for(self.cfg, i.locale)]
+        if not todo:
+            return
+
+        def work(batch):
+            return backtranslate_batch(
+                copy.copy(self.provider), [i.translated for i in batch],
+                language_name(batch[0].locale), self.bt_model, self.cfg, bill_locale=batch[0].locale,
+            )
+
+        for _, batch in _locale_batches(todo, self.size):
+            future = self._pool.submit(work, batch)
+            for idx, item in enumerate(batch):
+                self._index[self._key(item)] = (future, idx)
+        self.submitted += len(todo)
+        self.report(f"back-translating {len(todo)} key(s) in the background ({self.submitted} so far)")
+
+    def covers(self, batch: list[PendingScoreItem]) -> bool:
+        return all(self._key(i) in self._index for i in batch)
+
+    def get(self, batch: list[PendingScoreItem]) -> list[str | None] | None:
+        """Back-translations for ``batch`` in order, or ``None`` when any request failed."""
+        try:
+            out = []
+            for item in batch:
+                future, idx = self._index[self._key(item)]
+                out.append(future.result()[idx])
+            return out
+        except Exception:  # noqa: BLE001 - the caller back-translates inline instead
+            return None
+
+    def close(self) -> None:
+        self._pool.shutdown(wait=True)
+
+
 def rescore_items(
     provider: Provider,
     cfg: ProjectConfig,
@@ -545,6 +655,7 @@ def rescore_items(
     flag_store=None,
     force_bt: bool = False,
     save_every: int = RESCORE_SAVE_EVERY,
+    prefetcher: BtPrefetcher | None = None,
 ) -> tuple[int, list[str]]:
     """Score existing strings; update ScoreStore. Returns (updated, low_keys).
 
@@ -556,6 +667,14 @@ def rescore_items(
 
     bt_model = score_model_for(cfg)
     batch_size = max(1, int(getattr(cfg, "bt_batch_size", 5) or 5))
+    cloud_scorer = getattr(provider, "kind", "") in _CLOUD_SCORER_KINDS
+    workers = 1
+    if cloud_scorer:
+        # A cloud scorer takes big requests (same BT at half the wall time, HAIKU_BATCH_PROBE)
+        # and several at once; a local model keeps the small batches it was tuned with.
+        batch_size = max(1, int(getattr(cfg, "bt_cloud_batch_size", 0)
+                                or getattr(cfg, "translate_cloud_batch_size", 0) or batch_size))
+        workers = max(1, int(getattr(cfg, "bt_workers", 4) or 1))
     updated = 0
     low: list[str] = []
     total = len(items)
@@ -569,11 +688,57 @@ def rescore_items(
 
     saved_at = 0
     locales_dirty: set[str] = set()
+    batches = _locale_batches(items, batch_size)
+    inline = [b for b in batches if not (prefetcher is not None and prefetcher.covers(b[1]))]
+    prefetched = (
+        _prefetch_back_translations(provider, cfg, bt_model, inline, workers, _report)
+        if workers > 1 and len(inline) > 1 else {}
+    )
+    def _judge(item: PendingScoreItem, prov: Provider) -> QualityResult:
+        return score_candidate(
+            prov,
+            source=item.source,
+            translated=item.translated,
+            locale=item.locale,
+            language=language_name(item.locale),
+            glossary=glossary,
+            cfg=cfg,
+            max_chars=item.max_chars,
+            message_key=item.message_key or (
+                f"{item.namespace}.{item.key}" if item.namespace else item.key
+            ),
+            context=item.context,
+            force_bt=force_bt,
+            llm_score=True,
+        )
+
+    # Judge calls are one request per key; a cloud scorer sends them several at a time.
+    judged: dict[int, QualityResult] = {}
+    to_judge = [i for i in items if risky_judge_model(cfg, i.locale, i.source)]
+    if workers > 1 and len(to_judge) > 1:
+        import copy
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _try(item):
+            try:
+                return _judge(item, copy.copy(provider))
+            except Exception:  # noqa: BLE001 - judged inline below instead
+                return None
+
+        _report(f"judging {len(to_judge)} short key(s), {workers} at a time")
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for item, result in zip(to_judge, pool.map(_try, to_judge)):
+                if result is not None:
+                    judged[id(item)] = result
     try:
-        for start, batch in _locale_batches(items, batch_size):
+        for start, batch in batches:
             backs: list[str | None]
             if judge_model_for(cfg, batch[0].locale):
                 backs = [None] * len(batch)
+            elif prefetcher is not None and prefetcher.covers(batch) and (got := prefetcher.get(batch)) is not None:
+                backs = got
+            elif start in prefetched and prefetched[start] is not None:
+                backs = prefetched[start]
             else:
                 language = language_name(batch[0].locale)
                 with log_heartbeat(
@@ -592,23 +757,10 @@ def rescore_items(
             for offset, item in enumerate(batch):
                 done = start + offset + 1
                 language = language_name(item.locale)
-                if judge_model_for(cfg, item.locale):
-                    quality = score_candidate(
-                        provider,
-                        source=item.source,
-                        translated=item.translated,
-                        locale=item.locale,
-                        language=language,
-                        glossary=glossary,
-                        cfg=cfg,
-                        max_chars=item.max_chars,
-                        message_key=item.message_key or (
-                            f"{item.namespace}.{item.key}" if item.namespace else item.key
-                        ),
-                        context=item.context,
-                        force_bt=force_bt,
-                        llm_score=True,
-                    )
+                # Same rule as the inline path: the configured judge, else (judge_risky) the scoring
+                # model for one- and two-word keys, which back-translation cannot judge.
+                if risky_judge_model(cfg, item.locale, item.source):
+                    quality = judged.get(id(item)) or _judge(item, provider)
                 else:
                     back = backs[offset] if offset < len(backs) else None
                     quality = score_with_backtranslation(
@@ -675,6 +827,7 @@ def run_deferred_scoring_phase(
     pin_model: str,
     report: Reporter,
     flag_store=None,
+    prefetcher: BtPrefetcher | None = None,
 ) -> int:
     """Phase B: unload translator, warm score model, batch BT."""
     items = _dedupe_pending(items)
@@ -690,7 +843,7 @@ def run_deferred_scoring_phase(
 
     updated, _low = rescore_items(
         provider, cfg, scores, glossary, items,
-        report=report, flag_store=flag_store, force_bt=False,
+        report=report, flag_store=flag_store, force_bt=False, prefetcher=prefetcher,
     )
 
     if callable(stop):

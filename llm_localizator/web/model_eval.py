@@ -92,14 +92,14 @@ def model_eval_view(cfg: ProjectConfig | None = None) -> dict[str, Any]:
             "ok": True,
             "available": False,
             "error": (
-                "Bakeoff reports live under experiments/quality_bakeoff "
-                "in the llm_localizator engine checkout."
+                "No bakeoff REPORT directory in this checkout. "
+                "Run `llm-localizator bakeoff` (see docs/model-evaluation.md)."
             ),
             "reports": [],
             "comparison": [],
             "has_winner": False,
             "calibrate": {
-                "script": "experiments/quality_bakeoff/calibrate_gold.py",
+                "script": "llm-localizator bakeoff",
                 "docs": "docs/model-evaluation.md",
             },
         }
@@ -132,7 +132,7 @@ def model_eval_view(cfg: ProjectConfig | None = None) -> dict[str, Any]:
         "comparison": comparison,
         "has_winner": has_winner,
         "calibrate": {
-            "script": "experiments/quality_bakeoff/calibrate_gold.py",
+            "script": "llm-localizator bakeoff",
             "docs": "docs/model-evaluation.md",
         },
     }
@@ -146,7 +146,7 @@ def run_bakeoff(*, locale: str = "pl") -> dict[str, Any]:
             "error": (
                 "tq is not on PATH. Bakeoff will not start a background shell "
                 "(ADR-28). Install taskqueue or run "
-                "experiments/quality_bakeoff/run_bakeoff.py from a terminal."
+                "`llm-localizator run-bakeoff` from a terminal."
             ),
         }
     queue = operator_queue_root()

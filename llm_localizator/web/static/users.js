@@ -418,7 +418,7 @@
       var nameLine = el("div", "users-name", user.username);
       if (isSelf) {
         nameLine.appendChild(document.createTextNode(" "));
-        nameLine.appendChild(el("span", "users-muted", "(you)"));
+        nameLine.appendChild(el("span", "users-muted", uiT("users_you", "(you)")));
       }
       meta.appendChild(nameLine);
       meta.appendChild(el("div", "users-meta", "id " + String(user.id).slice(0, 8)));

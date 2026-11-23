@@ -45,4 +45,4 @@ sk = "ctranslate2"   # only if secondary is CT2; else keep ollama
 ```
 
 Corpus: `llm_localizator/pipeline/bakeoff_corpus.json`.
-Runner: `python experiments/quality_bakeoff/run_bakeoff.py --matrix …`.
+Runner: `llm-localizator bakeoff --matrix …` ([model-evaluation.md](../model-evaluation.md)).

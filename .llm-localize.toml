@@ -7,7 +7,7 @@ format = "json-flat"
 path = "llm_localizator/web/locales/{locale}.json"
 
 [locales]
-targets = ["pl", "de", "ar"]
+targets = ["pl", "de", "ar", "fr"]
 # Default LLM sweeps run pl only; thaw de/ar with --locales (ADR-16).
 frozen = []
 length_sensitive = ["de"]
@@ -94,6 +94,16 @@ qa_locales = ["en-XX"]
 adapter = "raw-js"
 src_dirs = ["llm_localizator/web"]
 exclude = ["llm_localizator/web/locales", "llm_localizator/web/overlay"]
+
+# Which parts of the scan must be fixed. The first surface that matches a file wins.
+[scan.surfaces.web-ui]
+paths = ["llm_localizator/web/static", "llm_localizator/web/shell.py", "llm_localizator/web/marketing.py"]
+mode = "fix"
+
+# Python request handlers: API payload text and server messages, no UI catalogue yet. Listed, never fails --strict.
+[scan.surfaces.server]
+paths = ["llm_localizator/web/*.py"]
+mode = "report"
 
 # Nested help articles (title/body). Served at /locales/help/{locale}.json;
 # not part of the flat chrome message catalogue (ADR-style separation).

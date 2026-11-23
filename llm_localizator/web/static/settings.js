@@ -779,7 +779,8 @@
     wrap.appendChild(meta);
     var table = el("table", "settings-table");
     table.innerHTML =
-      "<thead><tr><th>Place</th><th>Policy</th><th>Keys</th><th>Source</th><th></th></tr></thead>";
+      "<thead><tr><th>" + uiT("set_col_place", "Place") + "</th><th>" + uiT("set_col_policy", "Policy")
+      + "</th><th>" + uiT("set_col_keys", "Keys") + "</th><th>" + uiT("set_col_source", "Source") + "</th><th></th></tr></thead>";
     var tbody = document.createElement("tbody");
     table.appendChild(tbody);
     wrap.appendChild(table);
@@ -1234,7 +1235,7 @@
         parts.push("icu_skips_abort=" + payload.breaker.icu_skips_abort);
         parts.push("max_rejects=" + payload.breaker.translate_max_consecutive_rejects);
       }
-      note.textContent = parts.length ? ("Health: " + parts.join(" · ")) : "";
+      note.textContent = parts.length ? (uiT("set_health", "Health:") + " " + parts.join(" · ")) : "";
     }).catch(function () {});
   }
 

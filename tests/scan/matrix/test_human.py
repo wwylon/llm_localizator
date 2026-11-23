@@ -11,6 +11,8 @@ import pytest
 from .human_runner import run_host
 from .human_spec import HOSTS, KINDS, LANGS
 
+pytestmark = pytest.mark.slow  # hundreds of host x language cases; the quick lane skips them
+
 #: (host, kind): English is not reported there on purpose (a lone word after ``echo`` may be a name).
 NOT_BY_DESIGN = {("php", "label")}
 _CACHE: dict[str, dict] = {}

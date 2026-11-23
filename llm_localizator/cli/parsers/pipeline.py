@@ -37,6 +37,22 @@ def _add_translate_run_translate(sub: argparse._SubParsersAction) -> None:
                 "Required for a cloud run when [budget] mode = \"on_request\"."
             ),
         )
+        t.add_argument(
+            "--keys-file", default=None, metavar="PATH",
+            help=(
+                "Read explicit keys from a file (one per line or comma-separated; '-' reads stdin; "
+                "lines starting with # are ignored). Merged with --keys."
+            ),
+        )
+        t.add_argument(
+            "--only-missing", action="store_true",
+            help="Only keys whose target value is absent or empty; existing translations are never touched",
+        )
+        t.add_argument(
+            "--sync", action="store_true",
+            help="Cloud: one synchronous request per batch instead of Message Batches. Full price, "
+                 "no wait; for small or urgent runs",
+        )
         t.add_argument("--tag", dest="tags", action="append", default=None, metavar="TAG",
                        help="Only keys carrying this context tag (repeatable or comma-separated)")
         t.add_argument("--force", action="store_true", help="Retranslate up-to-date keys")

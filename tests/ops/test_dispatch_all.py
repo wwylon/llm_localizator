@@ -169,7 +169,7 @@ def test_manifest_excludes_non_http_ops() -> None:
     for name in ("mcp", "add-locale", "web", "watch", "check", "workflow"):
         assert name not in manifest
     assert _OPS_EXCLUDED == frozenset({"web", "mcp", "add-locale", "watch", "check", "workflow", "quality",
-                                         "runtime", "check-keys", "approach",
+                                         "runtime", "check-keys", "approach", "localize-project",
                                          "help", "skill", "set", "review-risk", "cycle", "onboard",
                                          "context-propose", "context-note", "server-copy",
                                          "glossary-learn", "import-review"})

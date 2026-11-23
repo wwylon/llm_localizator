@@ -1,4 +1,4 @@
-"""web.bat follows devkit/conventions/web-launcher.md (help, hard-coded ports equal to the CLI defaults)."""
+"""web.bat launcher contract (help, hard-coded ports equal to the CLI defaults)."""
 
 from __future__ import annotations
 
