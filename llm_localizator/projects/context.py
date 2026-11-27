@@ -160,7 +160,92 @@ def _overlay_glossary(base: dict, extra: dict) -> dict:
     return merged
 
 
+def foreign_glossary_for(
+    path: Path | None,
+    *,
+    own_domains: list[str] | None,
+) -> dict | None:
+    """Glossary terms from domains *not* in ``own_domains`` (cross-domain bleed).
+
+    Returns ``None`` when the glossary is a single file, when ``own_domains`` is
+    ``None`` (all domains apply), or when no other domain files exist.
+    """
+    if path is None or own_domains is None:
+        return None
+    p = Path(path)
+    if not p.is_dir():
+        return None
+    bundle = load_glossary_bundle(p)
+    foreign = [n for n in bundle if n != "global" and n not in own_domains]
+    if not foreign:
+        return None
+    # Do not pull ``global`` in — those terms are shared, not cross-domain bleed.
+    out = {"doNotTranslate": [], "terms": {}}
+    for name in foreign:
+        part = bundle.get(name) or {}
+        for term in part.get("doNotTranslate") or []:
+            if term not in out["doNotTranslate"]:
+                out["doNotTranslate"].append(term)
+        for term, data in (part.get("terms") or {}).items():
+            out["terms"][term] = data
+    return out if out["terms"] or out["doNotTranslate"] else None
+
+
+_GLOSSARY_CACHE: dict[tuple, tuple[tuple, dict]] = {}
+_GLOSSARY_CACHE_CAP = 256
+
+
+def _paths_stamp(paths: list[Path | None]) -> tuple:
+    out: list = []
+    for p in paths:
+        if p is None:
+            out.append(None)
+            continue
+        p = Path(p)
+        try:
+            if p.is_dir():
+                out.append(tuple(sorted(
+                    (str(f), f.stat().st_mtime_ns, f.stat().st_size)
+                    for f in p.rglob("*") if f.is_file()
+                )))
+            else:
+                st = p.stat()
+                out.append((st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append(("missing", str(p)))
+    return tuple(out)
+
+
 def effective_glossary_for(
+    path: Path | None,
+    *,
+    domains: list[str] | None = None,
+    shared: list[Path] | None = None,
+    conflict: str = "own",
+) -> dict:
+    """Cached :func:`_effective_glossary_uncached`, keyed by file stamps.
+
+    Called per batch (translate) and per key (improve); parsing every
+    glossary file each time dominated small runs. Returns a deep copy.
+    """
+    import copy
+
+    shared_list = list(shared or [])
+    key = (str(path), tuple(map(str, shared_list)), tuple(domains or ()), conflict)
+    stamp = _paths_stamp([path, *shared_list])
+    hit = _GLOSSARY_CACHE.get(key)
+    if hit is None or hit[0] != stamp:
+        value = _effective_glossary_uncached(
+            path, domains=domains, shared=shared_list, conflict=conflict,
+        )
+        if len(_GLOSSARY_CACHE) >= _GLOSSARY_CACHE_CAP:
+            _GLOSSARY_CACHE.clear()
+        _GLOSSARY_CACHE[key] = (stamp, value)
+        hit = _GLOSSARY_CACHE[key]
+    return copy.deepcopy(hit[1])
+
+
+def _effective_glossary_uncached(
     path: Path | None,
     *,
     domains: list[str] | None = None,

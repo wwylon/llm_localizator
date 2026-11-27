@@ -20,7 +20,7 @@ from ..catalog.state import (
 from ..core.standards import get_standard
 from ..core.script_checks import foreign_script_hard_gate
 from ..core.validate import ValidationFailure, validate_translation_detailed
-from ..projects import ContextNotes, ProjectConfig, GlossaryCache
+from ..projects import ContextNotes, ProjectConfig
 from ..pipeline.recording import provenance_stores, record_candidate
 from .export_formats import (
     _fieldnames,
@@ -318,11 +318,7 @@ def _consume_rows(
     dry_run: bool,
     positional: bool,
 ) -> dict:
-    glossary_cache = GlossaryCache(
-        cfg.glossary_path,
-        shared=list(getattr(cfg, "glossary_shared", []) or []),
-        conflict=getattr(cfg, "glossary_conflict", "own"),
-    )
+    glossary_cache = cfg.glossary_cache()
     notes = ContextNotes(cfg.context_dir)
     stores = provenance_stores(cfg)
     state, history, scores = stores.state, stores.history, stores.scores

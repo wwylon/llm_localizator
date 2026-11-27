@@ -435,6 +435,17 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
         "/api/translator-config":      "_get_translator_config",
     }
 
+    def _redirect(self, location: str, *, cookie: str | None = None, no_store: bool = False) -> None:
+        """Send an empty 302 to *location* (optionally setting one cookie)."""
+        self.send_response(302)
+        self.send_header("Location", location)
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        if no_store:
+            self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
         from . import timing as web_timing
 
@@ -462,13 +473,7 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
 
                 if url.path in MARKETING_REDIRECTS:
                     dest = MARKETING_REDIRECTS[url.path]
-                    self.send_response(302)
-                    self.send_header(
-                        "Location", f"http://127.0.0.1:{mkt_port}{dest}",
-                    )
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
+                    return self._redirect(f"http://127.0.0.1:{mkt_port}{dest}")
 
             from .ui_locale_path import (
                 UI_LOCALE_COOKIE,
@@ -490,52 +495,27 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
                     qa = tuple(getattr(st0.cfg, "qa_locales", ()) or ())
             allowed = ui_locales(qa)
 
+            preferred = self._cookie(UI_LOCALE_COOKIE) or "en"
+            if preferred not in allowed:
+                preferred = "en"
+            locale_cookie = f"{UI_LOCALE_COOKIE}={preferred}; Path=/; SameSite=Lax"
+
             if url.path in ("/", "/index.html"):
-                preferred = self._cookie(UI_LOCALE_COOKIE) or "en"
-                if preferred not in allowed:
-                    preferred = "en"
-                self.send_response(302)
-                self.send_header(
-                    "Location", prefixed_path(preferred, "/app", allowed=allowed),
-                )
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
+                return self._redirect(prefixed_path(preferred, "/app", allowed=allowed))
 
             ui_locale, app_path = split_ui_locale_path(url.path)
-            # QA marker in the URL but not enabled → strip to bare path + redirect.
+            # QA marker in the URL but not enabled -> strip to bare path + redirect.
+            # A bare app path gets the preferred locale prefix.
+            redirect_path = None
             if ui_locale is not None and ui_locale not in allowed:
-                preferred = self._cookie(UI_LOCALE_COOKIE) or "en"
-                if preferred not in allowed:
-                    preferred = "en"
-                loc = prefixed_path(preferred, app_path, allowed=allowed)
+                redirect_path = app_path
+            elif ui_locale is None and needs_locale_redirect(url.path):
+                redirect_path = url.path
+            if redirect_path is not None:
+                loc = prefixed_path(preferred, redirect_path, allowed=allowed)
                 if url.query:
                     loc = f"{loc}?{url.query}"
-                self.send_response(302)
-                self.send_header("Location", loc)
-                self.send_header(
-                    "Set-Cookie",
-                    f"{UI_LOCALE_COOKIE}={preferred}; Path=/; SameSite=Lax",
-                )
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            if ui_locale is None and needs_locale_redirect(url.path):
-                preferred = self._cookie(UI_LOCALE_COOKIE) or "en"
-                if preferred not in allowed:
-                    preferred = "en"
-                loc = prefixed_path(preferred, url.path, allowed=allowed)
-                if url.query:
-                    loc = f"{loc}?{url.query}"
-                self.send_response(302)
-                self.send_header("Location", loc)
-                self.send_header(
-                    "Set-Cookie",
-                    f"{UI_LOCALE_COOKIE}={preferred}; Path=/; SameSite=Lax",
-                )
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
+                return self._redirect(loc, cookie=locale_cookie)
 
             if url.path.startswith("/locales/") and url.path.endswith(".json"):
                 locales_root = (Path(__file__).parent / "locales").resolve()
@@ -590,12 +570,7 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
                     # Accounts exist and this browser has no session: the shell token grants no role (M0), so the
                     # app pages would only show "sign in required" errors. Send people to the login page instead.
                     login = f"/{ui_locale}/login" if ui_locale else "/login"
-                    self.send_response(302)
-                    self.send_header("Location", login)
-                    self.send_header("Cache-Control", "no-store")
-                    self.send_header("Content-Length", "0")
-                    self.end_headers()
-                    return
+                    return self._redirect(login, no_store=True)
                 token = getattr(self, "session_token", "") or ""
                 html = render_shell(
                     shell_route.id, token, ui_locale=ui_locale or "en",
@@ -626,52 +601,6 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
     # -------------------------------------------------------------------
     # GET handlers — one per route in _GET_ROUTES
     # -------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     # -------------------------------------------------------------------
@@ -767,11 +696,13 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
                 return self._send({"error": "request too large"}, 413)
             try:
                 body = json.loads(self.rfile.read(length) or b"{}")
-            except json.JSONDecodeError:
+            except ValueError:  # JSONDecodeError and UnicodeDecodeError
                 return self._send({"ok": False, "error": "body must be valid JSON"}, 400)
             if not isinstance(body, dict):
                 return self._send({"ok": False, "error": "body must be a JSON object"}, 400)
             project = body.get("project", self.default_project)
+            if project is not None and not isinstance(project, str):
+                return self._send({"ok": False, "error": "project must be a string"}, 400)
             st = self._state(project)
             web_timing.reset(
                 enabled=web_timing.enabled_for_request(body=body, cfg=st.cfg),
@@ -1005,41 +936,6 @@ class _Handler(ResponseMixin, GetRoutesMixin, AuthRoutesMixin, PostRoutesMixin, 
     # POST handlers — one per route in _POST_ROUTES
     # Signature: (self, url, body, st, actor, project)
     # -------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class _LoopbackServer(ThreadingHTTPServer):

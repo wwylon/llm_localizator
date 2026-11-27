@@ -12,6 +12,7 @@ from ..catalog import catalog_for
 from ..pipeline.bakeoff import (
     Cell,
     load_corpus_file,
+    load_slice,
     plan_cells,
     run_bakeoff,
     sample_catalogue,
@@ -53,6 +54,8 @@ def _is_installed(model: str, installed: list[str]) -> bool:
 
 def _select_keys(cfg: ProjectConfig, req: BakeoffRequest):
     limit = req.limit if req.limit else DEFAULT_LIMIT
+    if getattr(req, "slice", None):
+        return stratify(load_slice(req.slice), limit)
     if req.corpus == "builtin":
         return stratify(load_corpus_file(None), limit)
     if req.corpus:
@@ -69,6 +72,8 @@ def _submit_job(cfg: ProjectConfig, req: BakeoffRequest, locales: list[str]) -> 
         overrides["--limit"] = str(req.limit)
     if req.corpus:
         overrides["--corpus"] = req.corpus
+    if getattr(req, "slice", None):
+        overrides["--slice"] = req.slice
     if req.family:
         overrides["--family"] = req.family
     if req.matrix:
@@ -132,9 +137,8 @@ def op_bakeoff(
             f"{cfg.provider.kind!r}. Cloud models are out of scope (ADR-35)."
         )
 
-    if not req.dry_run and (req.submit or (tq_available() and not req.inline)):
-        if req.submit and not tq_available():
-            return _fail("the 'tq' command is not on PATH. Install the taskqueue package.")
+    # Prefer the queue when tq is present; without it, run locally (engine works alone).
+    if not req.dry_run and tq_available() and (req.submit or not req.inline):
         return _submit_job(cfg, req, locales)
 
     try:
@@ -164,6 +168,7 @@ def op_bakeoff(
             for c in cells
         ],
         "keys": len(keys),
+        "slice": getattr(req, "slice", None),
     }
     if not cells:
         return _fail("none of the requested models are installed")
@@ -178,6 +183,7 @@ def op_bakeoff(
     outcome = run_bakeoff(
         cfg, backend, cells, keys,
         out_dir=out_dir, matrix=req.matrix, force_cells=req.force_cells,
+        slice_name=getattr(req, "slice", None),
         report=report or print,
     )
     passed = sum(1 for r in outcome.results if r.gate_ok)

@@ -11,7 +11,11 @@ from tests.conftest import setup_project
 
 @pytest.fixture
 def queue_present(monkeypatch):
-    """A machine where ``tq`` is installed, and a trap on the submit path."""
+    """A machine where ``tq`` is installed, and a trap on the submit path.
+
+    Patch both the spend-gate probe (``projects.taskqueue``) and the translate
+    module's own import — dispatch checks the former before calling ``op_translate``.
+    """
     submitted: list[str] = []
 
     def fake_submit(cfg, req):
@@ -20,6 +24,7 @@ def queue_present(monkeypatch):
 
         return OpResult(ok=True, exit_code=0, command="translate", summary="queued")
 
+    monkeypatch.setattr("llm_localizator.projects.taskqueue.tq_available", lambda: True)
     monkeypatch.setattr("llm_localizator.ops.translate.tq_available", lambda: True)
     monkeypatch.setattr("llm_localizator.ops.translate._submit", fake_submit)
     return submitted

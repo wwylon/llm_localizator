@@ -576,6 +576,30 @@ def check_prompt_leak(en_val: str, translated: str) -> str | None:
 
 _PLACEHOLDER_SPAN_RE = re.compile(r"\{[^{}]*\}")
 
+# A chat answer instead of a translation: "The translation of "X" into Polish is ...".
+_CHAT_ANSWER_RE = re.compile(
+    r"(?i:\b(translat(ed|ion)\s+(string|text|of)|here\s+is\s+the\s+translation)\b)"
+    r"|\b(into|to|in)\s+[A-Z][a-z]+\s+(is|would\s+be)\b"  # "into Polish is": case-sensitive
+)
+
+
+def check_chat_answer(en_val: str, translated: str) -> str | None:
+    """The model talked about the translation instead of giving it.
+
+    Scores used to rate these 1.0, because the right word sits inside the sentence and
+    the back-translation matches. The source must not contain the phrase itself.
+    """
+    if not translated or _CHAT_ANSWER_RE.search(en_val or ""):
+        return None
+    if _CHAT_ANSWER_RE.search(translated):
+        return "translation is a chat answer about the translation, not the translation"
+    return None
+
+
+def answer_leak(en_val: str, translated: str) -> str | None:
+    """Hard score failure: a chat answer or leaked prompt text (V46 shape)."""
+    return check_chat_answer(en_val, translated) or check_prompt_leak(en_val, translated)
+
 
 def check_translator_meta(en_val: str, translated: str) -> str | None:
     """Advisory: translator notes leaked into short UI labels."""

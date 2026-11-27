@@ -39,14 +39,10 @@ from .scoring import (
     score_candidate,
 )
 
+# Public names live in pipeline.translate; this module holds its helpers.
 __all__ = [
-    "TranslationResult",
     "WorkItem",
-    "collect_work",
-    "run_translation",
-    "min_keys_skip_message",
     "reject_duplicate_batch_outputs",
-    "word_count",
 ]
 
 Reporter = Callable[[str], None]
@@ -146,11 +142,8 @@ def _try_tm_hit(st: _Run, lc: _Loc, item) -> bool:
     report = st.report
     force = st.force
     only_keys = st.only_keys
-    trigger = st.trigger
     work = st.work
-    pending = st.pending
     pending_history = st.pending_history
-    target_cache = st.target_cache
     native_notes = st.native_notes
     locale = lc.locale
     model = lc.model
@@ -385,7 +378,6 @@ def _process_translation(st: _Run, lc: _Loc, idx: int, item, translated, llm_ite
     work = st.work
     pending = st.pending
     pending_history = st.pending_history
-    target_cache = st.target_cache
     flag_store = st.flag_store
     flags_opened = st.flags_opened
     phase_a_written = st.phase_a_written
@@ -677,6 +669,7 @@ def _process_translation(st: _Run, lc: _Loc, idx: int, item, translated, llm_ite
         quality_signals=quality.signals, trigger=trigger,
         provider=cfg.provider_kind_for(locale),
         dimensions=quality.dimensions, scorer=quality.scorer,
+        issues=quality.issues,
         candidates=hist_candidates,
         pending_history=pending_history,
         **notes.stale_args(item.namespace, item.key),

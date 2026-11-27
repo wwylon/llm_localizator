@@ -795,6 +795,8 @@ def test_translate_key_body_reaches_op(app, monkeypatch) -> None:
         seen["keys"] = list(req.keys or [])
         return OpResult(ok=True, exit_code=0, command="translate", summary="queued")
 
+    # No tq: default operator path still reaches op_translate (local fallback).
+    monkeypatch.setattr("llm_localizator.projects.taskqueue.tq_available", lambda: False)
     monkeypatch.setattr("llm_localizator.ops.dispatch_cmds.op_translate", fake)
     out = dispatch_op(app.cfg, "translate", {"locales": ["pl"], "keys": ["app.greet"]}, actor_role="Admin")
     assert out["ok"] is True

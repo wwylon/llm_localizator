@@ -25,10 +25,22 @@ def _cfg(tmp_path: Path, extra: str) -> Path:
 
 def test_every_builtin_engine_parses_and_loads(tmp_path: Path) -> None:
     engines = all_engines()
-    assert {"claude-haiku", "deepseek", "openai", "local-4gb", "local-8gb"} <= set(engines)
+    assert {
+        "claude-haiku", "deepseek", "openai", "local-4gb", "local-8gb",
+        "local-hy-mt3-1.8b",
+    } <= set(engines)
     for engine_id in engines:
         cfg = load_config(_cfg(tmp_path, f'[engine]\nid = "{engine_id}"\n'))
         assert cfg.engine_id == engine_id
+
+
+def test_hy_mt3_engine_is_unbenchmarked_mt_chat(tmp_path: Path) -> None:
+    engine = get_engine("local-hy-mt3-1.8b")
+    assert engine.status == "unbenchmarked"
+    cfg = load_config(_cfg(tmp_path, '[engine]\nid = "local-hy-mt3-1.8b"\n'))
+    assert cfg.provider.kind == "ollama"
+    assert cfg.model_for("pl") == "hy-mt3:1.8b"
+    assert cfg.prompt_family == "mt_chat"
 
 
 def test_engine_sets_every_role(tmp_path: Path) -> None:

@@ -7,7 +7,8 @@
   if (!page || page.dataset.page !== "hardcoded" || !root) return;
 
   var TIERS = ["high", "medium", "low", "all"];
-  var state = { hits: [], tier: "high", showDecided: false, data: null };
+  var PAGE = 500;
+  var state = { hits: [], tier: "high", showDecided: false, data: null, offset: 0, filteredTotal: 0 };
 
   function uiT(key, fallback) {
     return (window.uiT || function (k, f) { return f != null ? f : k; })(key, fallback);
@@ -26,19 +27,12 @@
   }
 
   function apiGet(path, params) {
-    if (window.LLMApi && LLMApi.apiGet) return LLMApi.apiGet(path, params);
-    var qs = new URLSearchParams(params || {}).toString();
-    return fetch(path + (qs ? "?" + qs : ""), { credentials: "same-origin" }).then(function (r) { return r.json(); });
+    return window.LLMApi.apiGet(path, params);
   }
 
   function opPost(command, body) {
     body.project = project();
-    if (window.LLMApi && LLMApi.apiPost) return LLMApi.apiPost("/api/ops/" + command, body);
-    return fetch("/api/ops/" + command, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(function (r) { return r.json(); });
+    return window.LLMApi.apiPost("/api/ops/" + command, body);
   }
 
   function button(label, cls, handler) {
@@ -121,12 +115,16 @@
     var bar = el("div", "settings-actions hc-filter");
     bar.setAttribute("role", "group");
     bar.setAttribute("aria-label", uiT("hc_tier_label", "Confidence"));
+    var counts = (state.data && state.data.counts) || {};
     TIERS.forEach(function (tier) {
-      var n = tier === "all" ? state.hits.length
-        : state.hits.filter(function (h) { return (h.confidence || "medium") === tier; }).length;
+      var n = tier === "all" ? (state.data && state.data.total) || state.hits.length
+        : (counts[tier] != null ? counts[tier] : state.hits.filter(function (h) {
+          return (h.confidence || "medium") === tier;
+        }).length);
       var btn = button(tierLabel(tier) + " (" + n + ")", state.tier === tier ? "btn-primary" : "", function () {
         state.tier = tier;
-        paint();
+        state.offset = 0;
+        load();
       });
       btn.dataset.tier = tier;
       btn.setAttribute("aria-pressed", state.tier === tier ? "true" : "false");
@@ -142,6 +140,12 @@
     bar.appendChild(lab);
     var rescan = button(uiT("dash_scan_rerun", "Scan again"), "", function () { runScan(rescan); });
     bar.appendChild(rescan);
+    if (state.offset + state.hits.length < state.filteredTotal) {
+      bar.appendChild(button(uiT("hc_load_more", "Load more"), "", function () {
+        state.offset += PAGE;
+        load({ append: true });
+      }));
+    }
     bar.appendChild(status);
     return bar;
   }
@@ -227,8 +231,9 @@
       return;
     }
     var status = el("span", "field-hint hc-status", "");
+    var shownN = state.filteredTotal || state.hits.length;
     var summary = el("p", "field-hint hc-summary", uiT("hc_summary", "{n} findings in {files} files scanned")
-      .replace("{n}", String(state.hits.length)).replace("{files}", String(data.filesScanned || 0)) +
+      .replace("{n}", String(shownN)).replace("{files}", String(data.filesScanned || 0)) +
       (data.stale ? " · " + uiT("hc_stale", "source changed since the last scan") : ""));
     root.appendChild(summary);
     root.appendChild(filterBar(status));
@@ -246,17 +251,31 @@
     order.forEach(function (file) { root.appendChild(fileTable(file, byFile[file], status)); });
   }
 
-  function load() {
-    return apiGet("/api/scan/hits", { project: project() }).then(function (data) {
+  function load(opts) {
+    opts = opts || {};
+    var params = {
+      project: project(),
+      offset: String(state.offset || 0),
+      limit: String(PAGE),
+    };
+    if (state.tier && state.tier !== "all") params.confidence = state.tier;
+    return apiGet("/api/scan/hits", params).then(function (data) {
       if (!data || data.ok === false) {
         root.replaceChildren(el("p", "empty-state", (data && data.error) || uiT("hc_load_failed", "Could not load findings.")));
         return;
       }
       state.data = data;
-      state.hits = data.hits || [];
-      if (state.tier !== "all" && state.hits.length &&
-          !state.hits.some(function (h) { return (h.confidence || "medium") === state.tier; })) {
+      state.filteredTotal = data.filteredTotal != null ? data.filteredTotal : (data.hits || []).length;
+      if (opts.append) {
+        state.hits = state.hits.concat(data.hits || []);
+      } else {
+        state.hits = data.hits || [];
+      }
+      if (state.tier !== "all" && !state.hits.length && state.filteredTotal === 0 &&
+          data.total > 0) {
         state.tier = "all";
+        state.offset = 0;
+        return load();
       }
       paint();
     }).catch(function () {

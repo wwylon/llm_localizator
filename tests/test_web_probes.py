@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import time
 
 import pytest
@@ -13,7 +14,7 @@ from llm_localizator.projects.config import NamedProvider
 from llm_localizator.web.settings import provider_status_payload
 
 # Sleep-based and thread-timing dependent: they flake on a loaded machine, so they stay out of the fast lane.
-pytestmark = pytest.mark.slow
+# Not marked slow: the overlap test uses a barrier instead of a 1 s sleep (~0.1 s now).
 
 
 class _Resp(io.BytesIO):
@@ -41,17 +42,17 @@ def test_probes_run_in_parallel_and_are_cached(tmp_path, make_config, monkeypatc
     st_mod._OLLAMA_TAGS_EVENTS.clear()
     cfg = _cfg(make_config, tmp_path)
     calls = []
+    # All three probes must be in flight at once to pass the barrier: proves
+    # overlap without timing a sleep (serial probes would hit BrokenBarrierError).
+    barrier = threading.Barrier(3, timeout=10)
 
     def slow(url, timeout=None):
         calls.append(url)
-        time.sleep(1.0)
+        barrier.wait()
         return _Resp(json.dumps({"models": [{"name": "m"}]}).encode())
 
     monkeypatch.setattr("urllib.request.urlopen", slow)
-    t0 = time.perf_counter()
     first = provider_status_payload(cfg)
-    # Serial would take 3.0 s; the slack absorbs thread start-up under load.
-    assert time.perf_counter() - t0 < 2.5, "probes should overlap"
     assert {v["status"] for v in first["statuses"].values()} == {"online"}
     assert len(calls) == 3
     provider_status_payload(cfg)

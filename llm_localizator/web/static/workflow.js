@@ -13,9 +13,7 @@
   }
 
   function t(key, fallback, vars) {
-    var loc = window.uiLocale;
-    var value = loc && loc.t ? loc.t(key) : key;
-    var text = value && value !== key ? value : fallback;
+    var text = (window.uiT || function (k, f) { return f != null ? f : k; })(key, fallback);
     Object.keys(vars || {}).forEach(function (name) {
       text = text.split("{" + name + "}").join(String(vars[name]));
     });
@@ -36,7 +34,7 @@
   function post(path, body) {
     body = body || {};
     body.project = project();
-    if (window.LLMApi && LLMApi.apiPost) return LLMApi.apiPost(path, body);
+    if (window.LLMApi && LLMApi.apiPost) return window.LLMApi.apiPost(path, body);
     return fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,13 +111,15 @@
   var FIELD_LABEL = {
     score: ["wf_field_score", "score"], status: ["wf_field_status", "status"],
     locale: ["wf_field_locale", "locale"], namespace: ["wf_field_namespace", "namespace"],
+    hardcoded: ["wf_field_hardcoded", "hardcoded"], findings: ["wf_field_findings", "findings"],
   };
   var OP_LABEL = {
     ge: "≥", le: "≤", is: ["wf_op_is", "is"], is_not: ["wf_op_is_not", "is not"],
   };
+  var NUMERIC_FIELDS = { score: 1, hardcoded: 1, findings: 1 };
   function fieldLabel(f) { var l = FIELD_LABEL[f] || [f, f]; return t(l[0], l[1]); }
   function opLabel(o) { var l = OP_LABEL[o]; return Array.isArray(l) ? t(l[0], l[1]) : (l || o); }
-  function opsFor(field) { return field === "score" ? ["ge", "le"] : ["is", "is_not"]; }
+  function opsFor(field) { return NUMERIC_FIELDS[field] ? ["ge", "le"] : ["is", "is_not"]; }
 
   var WARN = {
     score_before_rescore: "A score condition runs before any Re-score block: it reads the scores already stored.",
@@ -159,6 +159,7 @@
   function defaultValue(field) {
     var o = state.options;
     if (field === "score") return 0.8;
+    if (field === "hardcoded" || field === "findings") return 1;
     if (field === "status") return (o.statuses || ["machine"])[0];
     if (field === "locale") return (o.locales || [""])[0] || "";
     return (o.namespaces || [""])[0] || "";
@@ -412,13 +413,19 @@
 
   function valueInput(block) {
     var o = state.options;
-    if (block.field === "score") {
+    if (NUMERIC_FIELDS[block.field]) {
       var i = el("input", "pc-input wf-score");
-      i.type = "number"; i.step = "0.01"; i.min = "0"; i.max = "1";
+      i.type = "number";
+      i.step = block.field === "score" ? "0.01" : "1";
+      i.min = "0";
+      i.max = block.field === "score" ? "1" : "9999";
       i.value = String(block.value);
       i.disabled = !state.canEdit;
       i.addEventListener("change", function () {
-        mutate(function () { block.value = Math.min(1, Math.max(0, Number(i.value) || 0)); });
+        var n = Number(i.value) || 0;
+        mutate(function () {
+          block.value = block.field === "score" ? Math.min(1, Math.max(0, n)) : Math.max(0, n);
+        });
       });
       return i;
     }

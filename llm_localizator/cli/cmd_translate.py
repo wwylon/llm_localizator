@@ -49,10 +49,8 @@ def run_submit(args: argparse.Namespace, job: str = "translate") -> int:
     from ..ops.translate import op_translate
     from ..ops.types import TranslateRequest
 
-    if job != "translate":
-        # Legacy alias path — still go through ops when possible.
-        pass
-
+    # *job* is always "translate" here (cli.main routes documents/review to
+    # cmd_documents); the parameter stays for the shared run_submit signature.
     result = op_translate(cfg, TranslateRequest(
         locales=list(getattr(args, "locales", None) or []) or None,
         namespace=getattr(args, "namespace", None),

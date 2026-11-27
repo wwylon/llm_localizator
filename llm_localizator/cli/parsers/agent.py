@@ -330,6 +330,37 @@ def _add_init(sub: argparse._SubParsersAction) -> None:
     cy.add_argument("--follow-timeout", type=float, default=3600.0, help="Seconds to wait per attempt")
     cy.add_argument("--review-limit", type=int, default=15)
 
+    nz = sub.add_parser(
+        "normalize",
+        help="Apply the candidate normalizer (quotes, ellipsis, case, plurals) to existing values",
+        description="Report-only by default. --write applies the fixes under the mutation lock and "
+                    "records history (trigger=normalize), keeping each key's status. Verified and "
+                    "locked keys are never touched.",
+    )
+    add_project_args(nz)
+    nz.add_argument("--locales", type=lambda s: [x.strip() for x in s.split(",") if x.strip()],
+                    help="Comma-separated (default: active targets)")
+    nz.add_argument("--namespace", action="append", dest="namespaces",
+                    help="Restrict to a namespace (repeatable)")
+    nz.add_argument("--write", action="store_true", help="Apply the fixes (default: report only)")
+    nz.add_argument("--steps", type=lambda s: [x.strip() for x in s.split(",") if x.strip()],
+                    help="Steps to apply (default: quotes,icu_quotes,ellipsis,symbol,plural_fill; "
+                         "opt-in: case,first_line)")
+    nz.add_argument("--format", dest="fmt", choices=["text", "json"], default="text")
+
+    rp = sub.add_parser(
+        "report",
+        help="One shareable page: coverage, checks, review queue, spend and a go / no-go verdict (read-only)",
+        description="Gathers status, validate, check-keys, the hardcoded scan, review-risk, drafts, "
+                    "budget and recent runs. Writes nothing except --out. Exit 1 only for a no-go verdict.",
+    )
+    add_project_args(rp)
+    rp.add_argument("--format", dest="fmt", choices=["md", "html", "json"], default="md")
+    rp.add_argument("--out", help="Write the report to this file instead of stdout")
+    rp.add_argument("--locales", type=lambda s: [x.strip() for x in s.split(",") if x.strip()],
+                    help="Comma-separated (default: active targets)")
+    rp.add_argument("--review-limit", type=int, default=5, help="Risky keys listed per locale")
+
     rr = sub.add_parser(
         "review-risk",
         help="Rank a locale's translations by how much a person should read them (read-only)",
@@ -360,6 +391,10 @@ def _add_init(sub: argparse._SubParsersAction) -> None:
     )
     hp.add_argument("guide", nargs="?", choices=["human", "agent"])
     hp.add_argument("--path", action="store_true", help="Print the file path instead of the text")
+    hp.add_argument(
+        "--print-steps", action="store_true",
+        help="With agent: print only the ordered section checklist (ADR-159)",
+    )
     hp.add_argument("--code", metavar="TOPIC",
                     help="Page for one programming ecosystem (android, swift, js-ts, ...); see --topics")
     hp.add_argument("--lang", metavar="CODE",

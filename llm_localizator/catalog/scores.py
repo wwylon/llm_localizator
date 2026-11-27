@@ -52,6 +52,7 @@ class ScoreStore(LocaleJsonStore):
         text: str,
         dimensions: dict[str, float] | None = None,
         scorer: str | None = None,
+        issues: list[dict[str, str]] | None = None,
     ) -> None:
         entry: dict = {
             "quality_score": score,
@@ -61,10 +62,12 @@ class ScoreStore(LocaleJsonStore):
         }
         if dimensions:
             entry["dimensions"] = dimensions
+        if issues:
+            entry["issues"] = issues
         if scorer:
             entry["scorer"] = scorer
             entry["scorer_version"] = (
-                "lqs-1" if scorer == "lqs"
+                "lqs-2" if scorer == "lqs"
                 else "heuristic-1" if scorer == "heuristic"
                 else "bt-1"
             )

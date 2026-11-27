@@ -75,7 +75,21 @@ def load_json_object(path: Path) -> dict:
     return raw
 
 
-_APPEND_LOCK = threading.Lock()
+#: Per-path locks so concurrent appends to different JSONL files do not serialize.
+_APPEND_LOCKS: dict[str, threading.Lock] = {}
+_APPEND_LOCKS_GUARD = threading.Lock()
+
+
+def _append_lock_for(path: Path) -> threading.Lock:
+    # absolute() (not resolve()) so the key is the same before and after
+    # the file exists; resolve() would switch keys on first create.
+    key = os.path.normcase(str(Path(path).absolute()))
+    with _APPEND_LOCKS_GUARD:
+        lock = _APPEND_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _APPEND_LOCKS[key] = lock
+        return lock
 
 
 def append_text_line(path: Path, line: str) -> None:
@@ -88,7 +102,7 @@ def append_text_line(path: Path, line: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = line if line.endswith("\n") else line + "\n"
     lock_path = path.with_name(path.name + ".lock")
-    with _APPEND_LOCK, lock_path.open("a+b") as lock_fh, path.open("a+b") as fh:
+    with _append_lock_for(path), lock_path.open("a+b") as lock_fh, path.open("a+b") as fh:
         _lock_file(lock_fh)
         try:
             size = fh.seek(0, os.SEEK_END)
@@ -179,7 +193,7 @@ def rewrite_text_locked(path: Path, text: str) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_name(path.name + ".lock")
-    with _APPEND_LOCK, lock_path.open("a+b") as fh:
+    with _append_lock_for(path), lock_path.open("a+b") as fh:
         _lock_file(fh)
         try:
             atomic_write_text(path, text)
@@ -196,7 +210,7 @@ def update_text_locked(path: Path, transform) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.with_name(path.name + ".lock")
-    with _APPEND_LOCK, lock_path.open("a+b") as fh:
+    with _append_lock_for(path), lock_path.open("a+b") as fh:
         _lock_file(fh)
         try:
             current = path.read_text(encoding="utf-8") if path.exists() else ""

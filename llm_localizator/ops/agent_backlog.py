@@ -97,7 +97,10 @@ def op_agent_backlog(cfg: ProjectConfig, req: AgentBacklogRequest) -> OpResult:
     gaps = list(
         iter_catalogue_gaps(
             cfg,
-            locales=req.locales,
+            # Default to active targets: frozen locales are skipped by every
+            # default sweep (ADR-16), so an agent should not be handed them
+            # either. Name a frozen locale in --locales to include it.
+            locales=req.locales or cfg.active_targets(),
             namespaces=namespaces,
             reasons=reasons,
             limit=req.limit,

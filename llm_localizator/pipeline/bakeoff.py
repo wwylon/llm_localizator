@@ -44,11 +44,14 @@ from ..catalog.io import read_json
 
 __all__ = [
     "BUILTIN_CORPUS",
+    "DISAMBIGUATION_CORPUS",
+    "BAKEOFF_SLICES",
     "Cell",
     "CellResult",
     "BakeoffOutcome",
     "KeyRow",
     "load_corpus_file",
+    "load_slice",
     "sample_catalogue",
     "stratify",
     "bucket_of",
@@ -60,6 +63,9 @@ __all__ = [
 ]
 
 BUILTIN_CORPUS = Path(__file__).with_name("bakeoff_corpus.json")
+DISAMBIGUATION_CORPUS = Path(__file__).with_name("bakeoff_disambiguation.json")
+#: Named bakeoff slices (ADR-159). ``None`` / empty = catalogue or ``--corpus``.
+BAKEOFF_SLICES = frozenset({"disambiguation"})
 GATE_MEAN = 0.70
 #: A cell rejecting more than this share of keys cannot win (ADR-12 evidence).
 GATE_REJECT_RATE = 0.20
@@ -141,6 +147,18 @@ def load_corpus_file(path: Path | None = None) -> list[KeyRow]:
             context=str(row.get("context") or ""),
         ))
     return out
+
+
+def load_slice(name: str) -> list[KeyRow]:
+    """Frozen bakeoff slice by name (ADR-159)."""
+    key = (name or "").strip().lower()
+    if key not in BAKEOFF_SLICES:
+        raise ValueError(
+            f"unknown bakeoff slice {name!r}; known: {', '.join(sorted(BAKEOFF_SLICES))}"
+        )
+    if key == "disambiguation":
+        return load_corpus_file(DISAMBIGUATION_CORPUS)
+    raise ValueError(f"unknown bakeoff slice {name!r}")
 
 
 def stratify(rows: list[KeyRow], limit: int, seed: int = 0) -> list[KeyRow]:
@@ -321,11 +339,13 @@ def run_cell(
 
 def format_section(
     results: list[CellResult], *, locales: list[str], keys_n: int, matrix: bool,
+    slice_name: str | None = None,
 ) -> str:
     """The body of one dated report section (a table per locale plus spot checks)."""
+    slice_bit = f" · slice `{slice_name}`" if slice_name else ""
     lines = [
         f"Locales: {', '.join(f'`{loc}`' for loc in locales)} · keys: {keys_n} · "
-        f"corpus `{CORPUS_VERSION}` · {'matrix' if matrix else 'consumer'}",
+        f"corpus `{CORPUS_VERSION}` · {'matrix' if matrix else 'consumer'}{slice_bit}",
         "",
         "**Note:** Prefer **consumer/chat** for a Winner. Speed = wall_s and keys/s. "
         "Do not swap TOML from stripped-only rankings (ADR-12/23).",
@@ -383,6 +403,7 @@ def run_bakeoff(
     out_dir: Path,
     matrix: bool = False,
     force_cells: bool = False,
+    slice_name: str | None = None,
     report: Reporter = default_report,
 ) -> BakeoffOutcome:
     """Run every cell not already in ``matrix_results.jsonl``, appending as it goes."""
@@ -461,7 +482,10 @@ def run_bakeoff(
         outcome.report_path = out_dir / "REPORT.md"
         append_report_section(
             outcome.report_path,
-            format_section(outcome.results, locales=locales, keys_n=len(keys), matrix=matrix),
+            format_section(
+                outcome.results, locales=locales, keys_n=len(keys), matrix=matrix,
+                slice_name=slice_name,
+            ),
         )
     outcome.ledger_path = out_dir / "LEDGER.md"
     write_ledger(jsonl, outcome.ledger_path)

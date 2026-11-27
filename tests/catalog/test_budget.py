@@ -62,6 +62,15 @@ def test_record_past_cap_still_meters_but_remaining_is_zero(tmp_path: Path) -> N
     assert store.reserve(0.1, cap_usd=1.0) is None
 
 
+def test_release_corrupt_ledger_does_not_raise_or_wipe(tmp_path: Path) -> None:
+    store = BudgetStore(tmp_path)
+    hold = store.reserve(0.5, cap_usd=1.0)
+    assert hold is not None
+    store.path.write_text("{not-json", encoding="utf-8")
+    store.release(hold)  # must not raise
+    assert store.path.read_text(encoding="utf-8") == "{not-json"
+
+
 def test_concurrent_reserve_under_two_threads(tmp_path: Path) -> None:
     store_a = BudgetStore(tmp_path)
     store_b = BudgetStore(tmp_path)

@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 
 from .base import CompletionRequest, Provider, ProviderError
+from .batch import PartialBatchError, batch_custom_ids, best_effort_cancel, fetch_jsonl
 from .http_retry import urlopen_json
 from .keys import candidate_vars, resolve_api_key
 
@@ -169,8 +170,8 @@ class AnthropicProvider(Provider):
         self.last_usage = None
         # Batch cache TTL is 1h so a long poll still reuses the prefix.
         entries = []
-        for i, request in enumerate(requests):
-            cid = (request.custom_id or f"req-{i}").replace(":", "_")[:64]
+        cids = batch_custom_ids([r.custom_id for r in requests])
+        for cid, request in zip(cids, requests):
             entries.append({
                 "custom_id": cid,
                 "params": self._message_payload(request, cache_ttl="1h"),
@@ -197,7 +198,11 @@ class AnthropicProvider(Provider):
         )
         while True:
             if time.monotonic() > deadline:
-                raise ProviderError(f"Anthropic Message Batch {batch_id} timed out")
+                best_effort_cancel(urllib.request.Request(
+                    f"{BATCHES_URL}/{batch_id}/cancel",
+                    headers=self._headers(batch=True), method="POST",
+                ))
+                raise ProviderError(f"Anthropic Message Batch {batch_id} timed out (cancel requested)")
             status_req = urllib.request.Request(
                 f"{BATCHES_URL}/{batch_id}",
                 headers=self._headers(batch=True),
@@ -227,21 +232,10 @@ class AnthropicProvider(Provider):
             method="GET",
         )
         # Results endpoint returns JSONL (one result object per line).
-        try:
-            with urllib.request.urlopen(results_req, timeout=120) as resp:
-                payload_bytes = resp.read()
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:400]
-            raise ProviderError(
-                f"Anthropic Message Batch results HTTP {exc.code}: {detail}"
-            ) from exc
+        rows = fetch_jsonl(results_req, "Anthropic")
         by_id: dict[str, dict] = {}
         total_in = total_out = total_cache_read = total_cache_write = 0
-        for line in payload_bytes.decode("utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
+        for row in rows:
             cid = str(row.get("custom_id") or "")
             by_id[cid] = row
             result = row.get("result") or {}
@@ -262,32 +256,32 @@ class AnthropicProvider(Provider):
         if total_cache_write:
             self.last_usage["cache_creation_input_tokens"] = total_cache_write
 
-        texts: list[str] = []
-        for i, request in enumerate(requests):
-            cid = (request.custom_id or f"req-{i}").replace(":", "_")[:64]
+        texts: list[str | None] = []
+        errors: dict[int, str] = {}
+        for i, cid in enumerate(cids):
             row = by_id.get(cid)
-            if not row:
-                raise ProviderError(f"Anthropic Message Batch missing result for {cid}")
-            result = row.get("result") or {}
+            result = (row or {}).get("result") or {}
             rtype = result.get("type") if isinstance(result, dict) else None
-            if rtype != "succeeded":
+            msg = (result.get("message") or {}) if isinstance(result, dict) else {}
+            text = _text_from_message(msg) if rtype == "succeeded" else ""
+            if not row:
+                errors[i] = "missing result"
+            elif rtype != "succeeded":
                 err = (result.get("error") or {}) if isinstance(result, dict) else {}
-                raise ProviderError(
-                    f"Anthropic Message Batch item {cid} failed: "
-                    f"{err.get('type', rtype)} {err.get('message', '')}".strip()
-                )
-            msg = result.get("message") or {}
-            if msg.get("stop_reason") == "max_tokens":
-                raise ProviderError(
-                    f"Anthropic Message Batch item {cid} hit token limit"
-                )
-            text = _text_from_message(msg)
-            if not text:
-                raise ProviderError(
-                    f"Anthropic Message Batch item {cid} returned empty text"
-                )
-            texts.append(text)
-        return texts
+                errors[i] = f"{err.get('type', rtype)} {err.get('message', '')}".strip()
+            elif msg.get("stop_reason") == "max_tokens":
+                errors[i] = "hit token limit"
+            elif not text:
+                errors[i] = "returned empty text"
+            texts.append(None if i in errors else text)
+        if errors:
+            first = next(iter(errors.items()))
+            raise PartialBatchError(
+                f"Anthropic Message Batch: {len(errors)}/{len(cids)} item(s) failed "
+                f"(e.g. {cids[first[0]]}: {first[1]})",
+                texts, errors,
+            )
+        return texts  # type: ignore[return-value]
 
     def health_check(self) -> bool:
         return bool(self.api_key)

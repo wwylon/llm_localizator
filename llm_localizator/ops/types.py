@@ -66,6 +66,11 @@ def request_from_mapping(cls, mapping: dict, **overrides):
     return cls(**kwargs)
 
 
+#: Version of the op result envelope (docs/agent-contract.md). Bump only when a
+#: top-level field is renamed or removed or changes meaning; adding a field is not a bump.
+OP_SCHEMA_VERSION = 1
+
+
 @dataclass
 class OpResult:
     ok: bool
@@ -76,7 +81,9 @@ class OpResult:
     data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        out = asdict(self)
+        out["schema_version"] = OP_SCHEMA_VERSION
+        return out
 
 
 @dataclass
@@ -205,6 +212,7 @@ class BakeoffRequest:
     models: list[str] | None = None
     limit: int = 30
     corpus: str | None = None
+    slice: str | None = None  # ADR-159: e.g. disambiguation
     out: str | None = None
     family: str | None = None
     matrix: bool = False

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from llm_localizator.ops.dispatch import dispatch_op
 from llm_localizator.projects.config import load_config
 
@@ -12,6 +14,13 @@ BASE = (
     '[catalog]\nformat = "json-flat"\npath = "{locale}.json"\n\n'
     '[locales]\ntargets = ["pl"]\n'
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_ollama_probe(monkeypatch) -> None:
+    # Hermetic: the approach op probes a local Ollama, which costs ~4 s of
+    # connect timeouts on a machine without one (and differs per machine).
+    monkeypatch.setattr("llm_localizator.ops.guide.ollama_state", lambda _url: (False, []))
 
 
 def _cfg(tmp_path: Path):

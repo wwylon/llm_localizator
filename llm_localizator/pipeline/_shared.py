@@ -8,6 +8,7 @@ full translation engine.
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from dataclasses import dataclass
 
 from ..catalog.scores import ScoreStore
@@ -19,7 +20,27 @@ from ..projects import (
     effective_glossary_for,
 )
 from ..projects.screenshots import resolve_screenshot_path
-from ..scan.usage_hints import load_usage_hints
+from ..scan.usage_hints import load_usage_hints as _load_usage_hints_uncached
+
+# {path: ((mtime_ns, size), hints)}: payloads are built per key, and parsing
+# the namespace's usage file each time dominated small runs (audit P3).
+_USAGE_HINTS_CACHE: dict[str, tuple[tuple[int, int], dict[str, str]]] = {}
+
+
+def load_usage_hints(out_dir, namespace: str) -> dict[str, str]:
+    if not out_dir or not namespace:
+        return {}
+    path = Path(out_dir) / f"{namespace}.json"
+    try:
+        st = path.stat()
+    except OSError:
+        return {}
+    stamp = (st.st_mtime_ns, st.st_size)
+    hit = _USAGE_HINTS_CACHE.get(str(path))
+    if hit is None or hit[0] != stamp:
+        hit = (stamp, _load_usage_hints_uncached(out_dir, namespace))
+        _USAGE_HINTS_CACHE[str(path)] = hit
+    return hit[1]
 from .context_assembler import assemble_context, context_completeness
 from .ensemble import high_risk_source, risk_level
 from .frame_samples import frame_sample_values, is_placeholder_frame

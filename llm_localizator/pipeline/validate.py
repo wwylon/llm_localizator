@@ -35,6 +35,7 @@ V25  suspicious digraphs (semantic)   warning   core.quality
 V26  TM conflict (live ≠ high-score)  warning   catalog.tm
 V27  HTML tag integrity               error     core.validate
 V28  screenshot layout QA (opt-in)    warning   core.layout_qa
+V29  pixel budget too_wide (opt-in)   warning   core.layout_qa + layout_budgets
 V30  same-source coherence (semantic) warning   catalog.coherence_index
 V31  similar-source coherence         warning   catalog.coherence_index
 V46  prompt leak (tiny source grew)  error     core.validate
@@ -60,8 +61,12 @@ import json
 import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..catalog import Catalog, StateStore, is_structurally_stale, needs_translation
+
+if TYPE_CHECKING:
+    from ..projects.context import GlossaryCache
 from ..catalog.state import state_key
 from ..catalog.tm import TranslationMemory
 from ..core.dnt_spans import check_dnt_spans
@@ -79,7 +84,7 @@ from ..core.validate import (
 )
 from ..core.icu import extract_placeholders, extract_plural_categories
 from ..core.standards import get_standard
-from ..projects import ContextNotes, ProjectConfig, GlossaryCache
+from ..projects import ContextNotes, ProjectConfig
 from ..catalog.io import read_json
 
 __all__ = ["Finding", "ValidationReport", "run_validation", "SEVERITY_ERROR", "SEVERITY_WARNING",
@@ -279,6 +284,7 @@ class _KeyChecks:
     want_digraphs: bool
     want_length: bool
     want_ws_fullkey: bool
+    layout_budgets: dict = field(default_factory=dict)
 
     @property
     def want_any_advisory(self) -> bool:
@@ -416,27 +422,44 @@ def _check_key(ck: _KeyChecks, standard, ns: str, key: str, src, locale: str, ta
             ))
 
     if want_layout:
+        from ..catalog.layout_budgets import lookup_budget
+
         shot = resolve_screenshot_path(
             cfg.context_dir,
             screen=notes.screen(ns, key),
             image=notes.image(ns, key),
             locale=locale,
         )
-        if shot is not None:
+        budget = lookup_budget(getattr(ck, "layout_budgets", {}) or {}, ns, key)
+        max_width = None
+        font_size = None
+        if budget:
+            try:
+                max_width = float(budget.get("maxWidthPx")) if budget.get("maxWidthPx") is not None else None
+            except (TypeError, ValueError):
+                max_width = None
+            try:
+                font_size = float(budget.get("fontSizePx")) if budget.get("fontSizePx") is not None else None
+            except (TypeError, ValueError):
+                font_size = None
+        if shot is not None or max_width:
             for issue in layout_check(
                 src,
                 translated,
                 locale,
                 max_chars=notes.max_chars(ns, key),
                 screenshot=shot,
+                max_width_px=max_width,
+                font_size_px=font_size,
             ):
+                code = "V29" if issue.code == "V29" else "V28"
                 report.findings.append(Finding(
-                    "V28",
+                    code,
                     SEVERITY_WARNING,
                     locale,
                     ns,
                     key,
-                    f"{issue.code}: {issue.message}",
+                    f"{issue.code}: {issue.message}" if code == "V28" else issue.message,
                     path,
                 ))
 
@@ -527,7 +550,8 @@ def run_validation(
     ``check_semantic`` enables all advisory families (V17/V21-V25).
     Granular ``check_script`` / ``check_digraphs`` / ``check_length_semantic``
     enable subsets without the full semantic umbrella.
-    ``check_layout`` runs ``core.layout_qa`` when a screenshot resolves (V28).
+    ``check_layout`` runs ``core.layout_qa`` when a screenshot resolves (V28)
+    or a pixel budget exists (V29, ADR-159).
     ``diff_only`` skips keys that validated clean last time with identical
     inputs (text, context, state signatures, glossary, check flags). Keys with
     findings are always re-checked. Needs ``state_dir``; ignored without it.
@@ -544,11 +568,7 @@ def run_validation(
     notes = ContextNotes(cfg.context_dir)
     state = StateStore(cfg.state_dir) if cfg.state_dir else None
     tm = cfg.open_tm()
-    glossary_cache = GlossaryCache(
-        cfg.glossary_path,
-        shared=list(getattr(cfg, "glossary_shared", []) or []),
-        conflict=getattr(cfg, "glossary_conflict", "own"),
-    )
+    glossary_cache = cfg.glossary_cache()
 
     targets = locales if locales is not None else cfg.targets
     report.checked_locales = list(targets)
@@ -567,12 +587,21 @@ def run_validation(
     want_length = check_semantic or check_length_semantic
     want_ws_fullkey = check_semantic  # V17/V22/V24 with umbrella only
     want_layout = check_layout
+    layout_budgets: dict = {}
+    if want_layout:
+        from ..catalog.layout_budgets import load_budgets
+
+        try:
+            layout_budgets = load_budgets(cfg.data_root(), cfg.source_locale)
+        except Exception:  # noqa: BLE001 — missing data home must not abort validate
+            layout_budgets = {}
     ck = _KeyChecks(
         report=report, cfg=cfg, notes=notes, state=state, tm=tm, glossary_cache=glossary_cache,
         diff_cache=diff_cache, flags_sig=flags_sig, term_rows=term_rows,
         check_expansion=check_expansion, check_semantic=check_semantic, check_numbers=check_numbers,
         want_layout=want_layout, want_script=want_script, want_digraphs=want_digraphs,
         want_length=want_length, want_ws_fullkey=want_ws_fullkey,
+        layout_budgets=layout_budgets,
     )
 
     for ns in _namespaces(cfg, catalog, namespace, namespaces):

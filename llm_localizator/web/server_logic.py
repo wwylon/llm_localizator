@@ -374,7 +374,6 @@ def cached_visible_collections(st: AppState) -> list:
         hit = st._visible_collections_cache
     if hit is not None:
         return hit
-    from ..projects.collections import visible_collections
     from .timing import span
 
     with span("visible_collections"):
@@ -800,10 +799,14 @@ def findings(
         return {"ok": False, "error": str(exc), "byKey": {}, "byNamespace": {}}
 
     # A fully cached answer needs no size check (and no catalogue walk).
-    if keys is None and st._findings_cache:
+    # Every cache read/write holds cache_lock: the server is threaded and
+    # another request may evict or reset the cache between check and read.
+    if keys is None:
         cached_ns = [namespace] if namespace != "__all__" else st.namespaces()
-        if cached_ns and all((locale, ns) in st._findings_cache for ns in cached_ns):
-            return _findings_payload(st, locale, namespace, cached_ns)
+        with st.cache_lock:
+            fc = st._findings_cache
+            if cached_ns and fc and all((locale, ns) in fc for ns in cached_ns):
+                return _findings_payload(st, locale, namespace, cached_ns)
 
     source_total, _ = _source_total(st)
     # Cap full scans even when the client passes full=1. A specific namespace
@@ -830,9 +833,6 @@ def findings(
     by_namespace: dict[str, dict[str, list[str]]] = {}
     by_key: dict[str, list[str]] = {}
 
-    if st._findings_cache is None:
-        st._findings_cache = OrderedDict()
-
     only_keys = set(keys) if keys else None
 
     for ns in ns_list:
@@ -844,9 +844,11 @@ def findings(
                 continue
             cached = None
         else:
-            cached = st._findings_cache.get(cache_key)
-            if cached is not None:
-                st._findings_cache.move_to_end(cache_key)
+            with st.cache_lock:
+                fc = st._findings_cache
+                cached = fc.get(cache_key) if fc is not None else None
+                if cached is not None:
+                    fc.move_to_end(cache_key)
 
         if cached is None and cached_only:
             by_namespace[ns] = {}
@@ -867,9 +869,13 @@ def findings(
                         continue
                     ns_finds.setdefault(f.key, []).append(f"{f.check}: {f.message}")
             if only_keys is None:
-                st._findings_cache[cache_key] = ns_finds
-                while len(st._findings_cache) > _FINDINGS_CACHE_CAP:
-                    st._findings_cache.popitem(last=False)
+                with st.cache_lock:
+                    if st._findings_cache is None:
+                        st._findings_cache = OrderedDict()
+                    fc = st._findings_cache
+                    fc[cache_key] = ns_finds
+                    while len(fc) > _FINDINGS_CACHE_CAP:
+                        fc.popitem(last=False)
             cached = ns_finds
         by_namespace[ns] = cached
         if all_ns:
@@ -890,7 +896,10 @@ def findings(
 def _findings_payload(
     st: AppState, locale: str, namespace: str, ns_list: list[str],
 ) -> dict:
-    """Assemble a findings response from the per-namespace cache only."""
+    """Assemble a findings response from the per-namespace cache only.
+
+    Caller must hold ``st.cache_lock`` and have checked every key is present.
+    """
     all_ns = namespace == "__all__"
     by_namespace: dict[str, dict[str, list[str]]] = {}
     by_key: dict[str, list[str]] = {}
@@ -1039,6 +1048,8 @@ def message_row(
     """Full detail for a single key."""
     if not locales:
         locales = st.cfg.targets[:1]
+    if not locales:
+        return {"ok": False, "error": "no target locales configured"}
     index = _message_index(st, locales, namespace)
     match = next(
         (r for r in index.rows if r.namespace == namespace and r.key == key),

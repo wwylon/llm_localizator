@@ -10,7 +10,11 @@ from pathlib import Path
 import pytest
 
 from llm_localizator.catalog.review_queue import ReviewQueue
-from llm_localizator.catalog.visual_findings import VisualFindingsError, parse_finding
+from llm_localizator.catalog.visual_findings import (
+    VisualFindingsError,
+    crawl_kind_to_reason,
+    parse_finding,
+)
 from llm_localizator.ops.ingest_visual import op_ingest_visual
 from llm_localizator.ops.types import IngestVisualRequest, ValidateRequest
 from llm_localizator.ops.validate import op_validate
@@ -59,6 +63,26 @@ def test_parse_finding_page_level_ticket_key() -> None:
     })
     assert f.ticket_namespace() == "_visual"
     assert f.ticket_key() == "@lobby"
+
+
+def test_parse_finding_accepts_layout_overlap() -> None:
+    f = parse_finding({
+        "schema_version": 1,
+        "locale": "ar",
+        "screen": "lobby",
+        "reason": "layout_overlap",
+        "message": "two labels share the same pixels",
+        "selector": "span.title ∩ span.badge",
+    })
+    assert f.reason == "layout_overlap"
+    assert f.selector == "span.title ∩ span.badge"
+
+
+def test_crawl_kind_maps_to_findings_reason() -> None:
+    assert crawl_kind_to_reason("clipped") == "layout_clip"
+    assert crawl_kind_to_reason("offscreen") == "layout_overflow"
+    assert crawl_kind_to_reason("overlap") == "layout_overlap"
+    assert crawl_kind_to_reason("unknown") is None
 
 
 def test_ingest_visual_enqueues(tmp_path: Path, make_config) -> None:

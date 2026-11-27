@@ -22,7 +22,7 @@ from ..catalog.state import needs_translation, state_key
 from ..projects import ProjectConfig, glossary_prompt_block
 from ..providers import CompletionRequest, Provider, ProviderError, metered_complete
 from ..reporting import log_heartbeat, report_metric, report_progress
-from .judge import judge_translation, quality_from_judge
+from .judge import build_key_rubric, judge_translation, quality_from_judge
 from .prompts import build_backtranslate_prompt, build_batch_backtranslate_prompt
 
 __all__ = [
@@ -411,6 +411,16 @@ def _apply_bt_signal(
     return quality
 
 
+def _foreign_glossary(cfg: ProjectConfig, namespace: str) -> dict | None:
+    """Other domain glossaries for cross-domain bleed signals (T5)."""
+    from ..projects.context import foreign_glossary_for
+
+    return foreign_glossary_for(
+        cfg.glossary_path,
+        own_domains=cfg.glossary_domains_for(namespace) if namespace else None,
+    )
+
+
 def score_candidate(
     provider: Provider,
     *,
@@ -423,8 +433,10 @@ def score_candidate(
     max_chars: int | None = None,
     message_key: str = "",
     context: str = "",
+    ui_role: str = "",
     force_bt: bool = False,
     llm_score: bool = True,
+    namespace: str = "",
 ) -> QualityResult:
     """Score with LQS judge when configured, else BT (ADR-20)."""
     if not llm_score:
@@ -454,6 +466,11 @@ def score_candidate(
     glossary_block = glossary_prompt_block(
         glossary, locale, language, sources=[source],
     )
+    rubric = build_key_rubric(
+        source=source, locale=locale, glossary=glossary,
+        message_key=message_key, context=context, ui_role=ui_role,
+        max_chars=max_chars,
+    )
     judged = judge_translation(
         provider,
         source=source,
@@ -468,6 +485,7 @@ def score_candidate(
         source_locale=cfg.source_locale,
         locale=locale,
         cfg=cfg,
+        rubric=rubric,
     )
     if not judged.ok:
         fallback = score_with_backtranslation(
@@ -481,10 +499,14 @@ def score_candidate(
         fallback.scorer = "bt"
         return fallback
 
+    ns = namespace or (
+        message_key.rsplit(".", 1)[0] if message_key.count(".") >= 1 else ""
+    )
     quality = quality_from_judge(
         source=source, translated=translated, locale=locale,
         glossary=glossary, judgment=judged.judgment, max_chars=max_chars,
         standard=standard,
+        foreign_glossary=_foreign_glossary(cfg, ns),
     )
     # Judge dimensions and the deterministic ones share one dict (names never clash).
     quality.dimensions = {**(structural.dimensions or {}), **(quality.dimensions or {})}
@@ -710,6 +732,7 @@ def rescore_items(
             context=item.context,
             force_bt=force_bt,
             llm_score=True,
+            namespace=item.namespace,
         )
 
     # Judge calls are one request per key; a cloud scorer sends them several at a time.
@@ -782,6 +805,7 @@ def rescore_items(
                     text=item.translated,
                     dimensions=quality.dimensions,
                     scorer=quality.scorer,
+                    issues=quality.issues,
                 )
                 locales_touched.add(item.locale)
                 locales_dirty.add(item.locale)

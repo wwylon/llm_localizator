@@ -10,7 +10,7 @@ from ..pipeline.documents import translate_document
 from ..projects import ProjectConfig
 from ..projects.taskqueue import TaskqueueNotFound, submit
 from ..providers import project_provider
-from .cloud_gate import cloud_gate, release_cloud_hold
+from .cloud_gate import cloud_session
 from .types import DocumentsRequest, OpResult
 
 __all__ = [
@@ -227,18 +227,25 @@ def op_documents(cfg: ProjectConfig, req: DocumentsRequest, *, report=None) -> O
     locales = list(req.locales) if req.locales else list(cfg.active_targets())
     texts = document_source_texts(cfg, doc_dir, docs)
     texts_by_locale = {loc: list(texts) for loc in locales}
-    hold_id: str | None = None
     enqueue = bool(req.submit) and not bool(getattr(req, "inline", False))
-    if not req.dry_run:
-        blocked, hold_id = cloud_gate(
-            cfg, "documents", locales=locales,
-            keys=list(docs),
-            texts_by_locale=texts_by_locale,
-            take_hold=not enqueue,
-        )
+    with cloud_session(
+        cfg, "documents", locales=locales,
+        keys=list(docs),
+        texts_by_locale=texts_by_locale,
+        take_hold=not enqueue,
+        skip=req.dry_run,
+    ) as blocked:
         if blocked is not None:
             return blocked
+        return _documents_body(
+            cfg, req, locales=locales, docs=docs, doc_dir=doc_dir,
+            texts_by_locale=texts_by_locale, enqueue=enqueue, report=report,
+        )
 
+
+def _documents_body(
+    cfg, req, *, locales, docs, doc_dir, texts_by_locale, enqueue, report,
+) -> OpResult:
     lines = [
         f"documents in {doc_dir}",
         f"  {len(docs)} document(s): {', '.join(docs)}",
@@ -272,8 +279,6 @@ def op_documents(cfg: ProjectConfig, req: DocumentsRequest, *, report=None) -> O
                 ok=False, exit_code=1, command="documents",
                 summary=str(exc), lines=lines,
             )
-        finally:
-            release_cloud_hold(cfg, hold_id)
 
     # Preview listing only when dry-run and not executing inline.
     if req.dry_run and not bool(getattr(req, "inline", False)):
@@ -287,15 +292,12 @@ def op_documents(cfg: ProjectConfig, req: DocumentsRequest, *, report=None) -> O
             data={"documents": docs, "locales": locales, "docDir": str(doc_dir)},
         )
 
-    try:
-        return execute_documents(
-            cfg,
-            locales=locales,
-            docs=docs,
-            doc_dir=doc_dir,
-            model=req.model,
-            dry_run=req.dry_run,
-            report=report,
-        )
-    finally:
-        release_cloud_hold(cfg, hold_id)
+    return execute_documents(
+        cfg,
+        locales=locales,
+        docs=docs,
+        doc_dir=doc_dir,
+        model=req.model,
+        dry_run=req.dry_run,
+        report=report,
+    )

@@ -1,11 +1,14 @@
-"""LQS judge and score_candidate (ADR-20)."""
+"""LQS judge and score_candidate (ADR-20, ADR-158)."""
 
 from __future__ import annotations
 
 import json
 
 from llm_localizator.pipeline.judge import (
+    build_judge_prompt,
+    build_key_rubric,
     lqs_from_judgment,
+    normalize_issues,
     parse_judge_response,
     quality_from_judge,
 )
@@ -33,12 +36,13 @@ def test_parse_judge_json():
     })
     result = parse_judge_response(raw)
     assert result.ok
-    score, dims, signals = lqs_from_judgment(
+    score, dims, signals, issues = lqs_from_judgment(
         result.judgment, source="Hello", translated="Cześć",
     )
     assert 0.8 <= score <= 1.0
     assert dims["semantic"] == 0.9
     assert any("solid" in s for s in signals)
+    assert issues == []
 
 
 def test_lqs_penalizes_missing_info():
@@ -52,11 +56,71 @@ def test_lqs_penalizes_missing_info():
         "placeholder_error": False,
         "html_error": False,
     }
-    score, dims, _ = lqs_from_judgment(
+    score, dims, _, issues = lqs_from_judgment(
         judgment, source="Delete permanently", translated="Usuń",
     )
     assert dims["info"] == 0.0
     assert score < 0.9
+    assert issues == []
+
+
+def test_major_issue_caps_lqs_below_060():
+    judgment = {
+        "semantic_accuracy": 95,
+        "fluency": 95,
+        "terminology": 95,
+        "ui_appropriateness": 95,
+        "missing_information": False,
+        "added_information": False,
+        "placeholder_error": False,
+        "html_error": False,
+        "issues": [{
+            "category": "accuracy",
+            "severity": "major",
+            "description": "Wrong verb polarity: delete vs keep",
+        }],
+    }
+    score, _dims, signals, issues = lqs_from_judgment(
+        judgment, source="Delete", translated="Zachowaj",
+    )
+    assert score <= 0.59
+    assert len(issues) == 1
+    assert issues[0]["severity"] == "major"
+    assert any("judge issue: major/accuracy" in s for s in signals)
+
+
+def test_normalize_issues_drops_malformed():
+    assert normalize_issues([
+        {"category": "accuracy", "severity": "minor", "description": "ok"},
+        {"category": "nope", "severity": "minor", "description": "bad cat"},
+        {"category": "accuracy", "severity": "huge", "description": "bad sev"},
+        "not-a-dict",
+    ]) == [{"category": "accuracy", "severity": "minor", "description": "ok"}]
+
+
+def test_build_key_rubric_includes_placeholders_and_role():
+    rubric = build_key_rubric(
+        source="Hello {name}",
+        locale="pl",
+        message_key="app.button.save",
+        max_chars=24,
+        glossary={"terms": {"Hello": {"pl": "Cześć"}}},
+    )
+    joined = "\n".join(rubric)
+    assert "{name}" in joined or "name" in joined
+    assert "24" in joined
+    assert "button" in joined.lower()
+    assert "Cześć" in joined
+
+
+def test_judge_prompt_includes_rubric_checklist():
+    prompt = build_judge_prompt(
+        source="Save", translated="Zapisz", language="Polish", domain="an app",
+        rubric=["UI role is button label: keep length short."],
+    )
+    assert "Per-key rubric" in prompt
+    assert "button label" in prompt
+    assert '"issues"' in prompt
 
 
 def test_quality_from_judge_hard_fail():

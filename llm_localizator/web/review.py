@@ -11,9 +11,16 @@ from ..catalog.review_queue import (
     ReviewQueue,
     open_review_queue,
     ReviewTicket,
+    _SAFE_LOCALE,
 )
 from ..catalog.scores import ScoreStore
 from ..projects import ProjectConfig
+
+
+def _bad_locale(locale: object) -> dict[str, Any] | None:
+    if not isinstance(locale, str) or not _SAFE_LOCALE.fullmatch(locale) or ".." in locale:
+        return {"ok": False, "error": "invalid locale"}
+    return None
 
 
 def _queue(cfg: ProjectConfig) -> ReviewQueue:
@@ -78,6 +85,8 @@ def list_review_tickets(
     key: str | None = None,
     scores: ScoreStore | None = None,
 ) -> dict[str, Any]:
+    if locale and (bad := _bad_locale(locale)):
+        return bad
     if status is not None and status not in STATUSES:
         return {"ok": False, "error": f"unknown status {status!r}"}
     queue = _queue(cfg)
@@ -119,6 +128,8 @@ def create_review_ticket(
     title: str | None = None,
     scores: ScoreStore | None = None,
 ) -> dict[str, Any]:
+    if locale and (bad := _bad_locale(locale)):
+        return bad
     if not locale or not key:
         return {"ok": False, "error": "locale and key are required"}
     if not reason:
@@ -155,6 +166,8 @@ def comment_on_ticket(
     resolve: bool = False,
     scores: ScoreStore | None = None,
 ) -> dict[str, Any]:
+    if locale and (bad := _bad_locale(locale)):
+        return bad
     if not (author or "").strip():
         return {"ok": False, "error": "author is required"}
     if not (body or "").strip():
@@ -183,6 +196,8 @@ def set_ticket_status(
     actor: str | None = None,
     scores: ScoreStore | None = None,
 ) -> dict[str, Any]:
+    if locale and (bad := _bad_locale(locale)):
+        return bad
     if status not in STATUSES:
         return {"ok": False, "error": f"unknown status {status!r}"}
     queue = _queue(cfg)

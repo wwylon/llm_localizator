@@ -18,6 +18,22 @@ def test_explain_without_dimensions_is_not_guessed() -> None:
     assert explain_score({"dimensions": {"ui": 1.0}})["cause"] == "none-below-threshold"
 
 
+def test_explain_prefers_typed_issue_over_weak_dimension() -> None:
+    row = {
+        "dimensions": {"fluency": 0.7, "terminology": 0.3},
+        "signals": ["judge issue: major/accuracy: wrong polarity"],
+        "issues": [{
+            "category": "accuracy",
+            "severity": "major",
+            "description": "wrong polarity",
+        }],
+    }
+    why = explain_score(row)
+    assert why["cause"] == "issue:major/accuracy"
+    assert why["issues"][0]["severity"] == "major"
+    assert why["signal"].startswith("judge issue:")
+
+
 def test_top_causes_orders_by_count_then_name() -> None:
     rows = [{"cause": "b"}, {"cause": "a"}, {"cause": "b"}]
     assert top_causes(rows) == [("b", 2), ("a", 1)]

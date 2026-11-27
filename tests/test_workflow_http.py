@@ -17,6 +17,8 @@ from llm_localizator.web.server import _Handler
 
 from .conftest import write_json
 
+pytestmark = [pytest.mark.serial_web, pytest.mark.xdist_group("serial_web")]
+
 CONFIG = """
 [project]
 name = "{name}"

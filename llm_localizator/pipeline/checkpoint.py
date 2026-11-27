@@ -73,21 +73,49 @@ def _norm_text(value: object) -> str | None:
     return str(value)
 
 
-def _restore_sidecar_key(store, locale: str, namespace: str, key: str) -> None:
-    """Put one key back to whatever is on disk, keeping other in-memory edits."""
-    path = store.path_for(locale)
+def _restore_sidecar_key(
+    store, locale: str, namespace: str, key: str, disk: dict | None = None,
+) -> None:
+    """Put one key back to whatever is on disk, keeping other in-memory edits.
+
+    *disk* memoises the parsed file per ``(id(store), locale)`` so a flush
+    with many skipped keys reads each sidecar once. An unreadable file
+    leaves the in-memory value alone instead of deleting the key.
+    """
+    memo_key = (id(store), locale)
+    if disk is not None and memo_key in disk:
+        raw = disk[memo_key]
+    else:
+        path = store.path_for(locale)
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            raw = None
+        if raw is not None and not isinstance(raw, dict):
+            raw = None
+        if disk is not None:
+            disk[memo_key] = raw
+    if raw is None:
+        return
     sk = state_key(namespace, key)
     data = store.load(locale)
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    except (OSError, json.JSONDecodeError, UnicodeError):
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
     if sk in raw:
         data[sk] = raw[sk]
     else:
         data.pop(sk, None)
+
+
+def _bust_pending_paths(catalog, pending: dict) -> None:
+    bust = getattr(catalog, "_bust_cache", None)
+    path_for = getattr(catalog, "path_for", None)
+    if bust is None or path_for is None:
+        catalog.invalidate()
+        return
+    try:
+        for ns, locale in pending:
+            bust(path_for(locale, ns))
+    except Exception:  # adapter without per-file paths: fall back
+        catalog.invalidate()
 
 
 def _filter_external_edits(
@@ -104,8 +132,9 @@ def _filter_external_edits(
         return pending, []
     skipped: list[tuple[str, str, str]] = []
     filtered: dict = {}
-    # Bust catalogue cache so we see out-of-band file edits.
-    catalog.invalidate()
+    # Bust only the files we are about to compare (not the whole cache):
+    # a full invalidate forced every later load in the run to re-parse.
+    _bust_pending_paths(catalog, pending)
     for (ns, locale), updates in pending.items():
         base_map = baselines.get((ns, locale)) or {}
         if not base_map:
@@ -178,9 +207,10 @@ def flush_pending(
     result.skipped_external = skipped
     if skipped:
         skip_set = set(skipped)
+        disk: dict = {}
         for locale, ns, key in skipped:
-            _restore_sidecar_key(state, locale, ns, key)
-            _restore_sidecar_key(scores, locale, ns, key)
+            _restore_sidecar_key(state, locale, ns, key, disk)
+            _restore_sidecar_key(scores, locale, ns, key, disk)
         if pending_history:
             pending_history[:] = [
                 (loc, ev) for loc, ev in pending_history

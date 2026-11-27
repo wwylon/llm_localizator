@@ -40,6 +40,7 @@ ALLOWED: frozenset[tuple[tuple[str, ...], str]] = frozenset({
     (("quality",), "threshold"),
     (("translate",), "batch_size"),
     (("translate",), "cloud_batch_size"),
+    (("prompt",), "family"),  # chat | mt_chat (ADR-23); MT engines set mt_chat
 })
 _KINDS = frozenset({"ollama", "anthropic", "openai", "deepseek", "deepl", "ctranslate2", "openai_compat"})
 _BUILTIN = Path(__file__).resolve().parent / "builtin"

@@ -23,7 +23,6 @@ from ..catalog.state import is_locked, is_verified, now_iso, parse_translated_at
 from ..core.script_checks import foreign_script_hard_gate, latin_leftover_issues
 from ..core.standards import get_standard
 from ..core.validate import classify_failure, validate_translation
-from ..projects import GlossaryCache
 from ..pipeline.recording import provenance_stores
 from ..projects import ProjectConfig
 from .status import collect_missing
@@ -47,10 +46,7 @@ def _repairable(entry: dict | None) -> bool:
 
 def _broken_keys(cfg: ProjectConfig, catalog, locales: list[str], req: BulkClearRequest, state):
     """Yield ``(locale, ns, key, why)`` for translations that fail a hard or Latin-leftover check."""
-    glossary_cache = GlossaryCache(
-        cfg.glossary_path, shared=list(getattr(cfg, "glossary_shared", []) or []),
-        conflict=getattr(cfg, "glossary_conflict", "own"),
-    )
+    glossary_cache = cfg.glossary_cache()
     standard = get_standard(getattr(cfg, "catalog_standard", None))
     for ns in cfg.namespaces_for(catalog):
         if req.namespace and ns != req.namespace:

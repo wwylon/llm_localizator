@@ -43,11 +43,15 @@ def test_risky_keys_get_a_judge_without_judge_model(make_config, tmp_path) -> No
 def test_judge_suggestion_is_kept_as_a_signal() -> None:
     judgment = {"semantic_accuracy": 20, "fluency": 90, "terminology": 90, "ui_appropriateness": 50,
                 "suggested_translation": "Odrzuć"}
-    _score, _dims, signals = lqs_from_judgment(judgment, source="Discard", translated="Zrzutka")
+    _score, _dims, signals, _issues = lqs_from_judgment(
+        judgment, source="Discard", translated="Zrzutka",
+    )
     assert f"{SUGGESTION_PREFIX}Odrzuć" in signals
     assert suggestion_of(signals) == "Odrzuć"
-    _s, _d, same = lqs_from_judgment({**judgment, "suggested_translation": "Zrzutka"},
-                                     source="Discard", translated="Zrzutka")
+    _s, _d, same, _ = lqs_from_judgment(
+        {**judgment, "suggested_translation": "Zrzutka"},
+        source="Discard", translated="Zrzutka",
+    )
     assert suggestion_of(same) is None
 
 

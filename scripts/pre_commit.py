@@ -4,7 +4,8 @@
 
 1. No stray control bytes (a heredoc-mangled ``\\b`` becomes 0x08; see check_control_bytes.py).
 2. Every staged ``.py`` file compiles.
-3. Nothing staged from the paths the user keeps uncommitted (``web/locales/pl.json``, ``uv.lock`` …) unless
+3. Staged ``.py`` files pass ``ruff check`` (project rules; skipped if ruff is not installed).
+4. Nothing staged from the paths the user keeps uncommitted (``web/locales/pl.json``, ``uv.lock`` …) unless
    ``ALLOW_USER_FILES=1`` is set for that commit.
 """
 
@@ -29,6 +30,23 @@ def staged() -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
+def _ruff(paths: list[Path]) -> list[str]:
+    """Ruff on staged Python files with the project's rules; skipped when ruff is absent."""
+    if not paths:
+        return []
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--quiet", "--output-format", "concise",
+             *[str(p) for p in paths]],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+    except OSError:
+        return []
+    if proc.returncode == 0 or "No module named ruff" in proc.stderr:
+        return []
+    return [line for line in proc.stdout.splitlines() if line.strip()] or [proc.stderr.strip()]
+
+
 def main() -> int:
     files = staged()
     problems: list[str] = []
@@ -40,6 +58,7 @@ def main() -> int:
                 compile(path.read_bytes(), str(path), "exec")
             except SyntaxError as exc:
                 problems.append(f"{path.relative_to(ROOT)}:{exc.lineno}: does not compile: {exc.msg}")
+    problems += _ruff([p for p in sources if p.suffix == ".py"])
     if os.environ.get("ALLOW_USER_FILES") != "1":
         problems += [f"{f}: staged a file that holds uncommitted user work (ALLOW_USER_FILES=1 to override)"
                      for f in files if f in USER_FILES]

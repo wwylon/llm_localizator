@@ -222,6 +222,10 @@ def _add_bakeoff_run_bakeoff(sub: argparse._SubParsersAction) -> None:
                         help="Keys to test, sampled evenly across UI roles (default 30)")
         bo.add_argument("--corpus", default=None,
                         help="A corpus JSON file, or 'builtin' (default: this project's strings)")
+        bo.add_argument(
+            "--slice", default=None, choices=["disambiguation"],
+            help="Frozen short-UI disambiguation corpus (ADR-159); ignores catalogue sampling",
+        )
         bo.add_argument("--out", default=None,
                         help="Directory for REPORT.md / LEDGER.md (default: <state dir>/bakeoff)")
         bo.add_argument("--family", choices=["chat", "mt_chat"], default=None,

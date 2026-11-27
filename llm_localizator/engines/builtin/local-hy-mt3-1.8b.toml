@@ -1,0 +1,26 @@
+id = "local-hy-mt3-1.8b"
+name = "Local Ollama Hy-MT3 1.8B (unbenchmarked)"
+summary = "Tencent Hy-MT3-1.8B via a local Ollama tag hy-mt3:1.8b. Specialized MT; uses mt_chat prompts. Do not set as dogfood default until experiments/quality_bakeoff/REPORT.md names it Winner (ADR-12)."
+status = "unbenchmarked"
+evidence = "pending ADR-12 bakeoff vs incumbent; weights https://huggingface.co/tencent/Hy-MT3-1.8B-GGUF — see docs/model-evaluation.md § Hy-MT3"
+
+[requires]
+cloud = false
+vram_gib = 3
+
+[config.provider]
+kind = "ollama"
+
+[config.prompt]
+family = "mt_chat"
+
+[config.locales.models]
+default = "hy-mt3:1.8b"
+
+[config.quality]
+improve_model = "hy-mt3:1.8b"
+score_model = "hy-mt3:1.8b"
+threshold = 0.55
+
+[config.translate]
+batch_size = 5

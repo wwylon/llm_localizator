@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 # PyPI distribution name. The import package is llm_localizator and the command is
 # llm-localizator; "llm-localize" on PyPI is an unrelated project.
 name = "llm_localizator"
-version = "0.2.1"
+version = "0.3.0"
 description = "Localisation engine: find hardcoded strings, translate with local or cloud LLMs, validate and review message catalogues"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -77,6 +77,7 @@ markers = [
     "live_bridge: requires LLM_LOCALIZE_BRIDGE_ROOT pointing at a consumer checkout",
     "browser: needs playwright + chromium (run with `-m browser`, extra e2e)",
     "slow: hermetic but heavy (sleeps, large fixtures, subprocess, the scanner conformance matrix); in the full lane, skipped by scripts/test_lane.py quick",
+    "serial_web: localhost web/server tests that collide under xdist; run with --dist loadgroup",
 ]
 
 [tool.ruff]
@@ -85,9 +86,22 @@ target-version = "py312"
 extend-exclude = ["experiments", "plan"]
 
 [tool.ruff.lint]
-# Correctness only (undefined names, syntax errors, unused imports in code paths);
-# style rules would churn the tree. Run: uvx ruff check llm_localizator
-select = ["E9", "F63", "F7", "F82"]
+# Correctness only; style rules would churn the tree. Run: uvx ruff check llm_localizator tests scripts
+# F401 (unused import) stays off: many modules re-export on purpose. B023 stays off:
+# the flagged closures run inside the same loop iteration (false positives).
+select = [
+    "E9", "F63", "F7", "F82",          # syntax errors, undefined names
+    "F541", "F811", "F841",            # placeholder-less f-string, redefinition, unused local
+    "E711", "E712", "E721", "E722",    # None/bool comparison, type(), bare except
+    "B006", "B008", "B015", "B018",    # mutable defaults, calls in defaults, useless expressions
+    "PLE",                             # pylint errors
+]
+
+[tool.ruff.lint.per-file-ignores]
+# pytest fixtures are imported and then shadowed by same-named test parameters.
+"tests/**" = ["F811"]
+# Scanner fixtures are sample consumer code (scanned, never imported).
+"tests/scan/cases/**" = ["F"]
 
 [tool.mypy]
 python_version = "3.12"

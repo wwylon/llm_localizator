@@ -13,7 +13,7 @@ are new to the tool.
 | **source locale** | The language the project is authored in (almost always `en`) |
 | **target locale** | A language being translated into (`pl`, `de`, `ar`, …) |
 | **namespace** | A logical group of strings — one file per namespace per locale (e.g. `auth`, `nav`). Single-file projects use one unnamed namespace |
-| **state file** | `.llm-state/<locale>.json` — records what was translated, when, and by which model. Commit these; they are not a cache |
+| **state file** | `.llm-state/<locale>.json` — records what was translated, when, and by which model. Not a cache. Lives in the data home (`~/.llm_localize/data/<name>/`) by default; see [section 14](#14-state-files-and-git) |
 | **status** | One of: `missing`, `stale`, `untranslated`, `machine`, `llm_reviewed`, `human`, `needs_better_model` |
 | **stale** | The source string changed after the translation was produced — needs retranslating |
 
@@ -536,21 +536,19 @@ only reports; it never fails the build.
 ## 14. State files and git
 
 `.llm-state/<locale>.json` records the source hash and model for every
-translated key. **These must be committed.** They are not a build artifact or
-cache — without them, every CI run would retranslate the entire catalogue from
-scratch, and "stale" detection would not work.
+translated key. It is not a build artifact or cache: without it every run
+would retranslate the whole catalogue, and "stale" detection would not work.
 
-```
-.llm-state/
-  pl.json    ← commit
-  de.json    ← commit
-  ar.json    ← commit
-```
+Where it lives depends on `data_home` (ADR-112, see
+[configuration.md](configuration.md)):
 
-Add to `.gitignore` if you want to exclude intermediate files:
-```
-# do NOT ignore .llm-state/
-```
+- `data_home = "engine"` (default): state, history, scores and TM live under
+  `~/.llm_localize/data/<name>/` on this machine, not in your repository.
+  Back that folder up; do not commit it.
+- `data_home = "project"`: state lives beside the config as `.llm-state/`.
+  Commit it, and do not add it to `.gitignore`. Use this when CI needs the
+  state (staleness gates such as `check` or `run-sync --diff`): a fresh CI
+  runner has no data home, so it would see every key as untracked.
 
 ---
 

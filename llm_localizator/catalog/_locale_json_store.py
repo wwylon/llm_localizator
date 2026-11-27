@@ -126,8 +126,12 @@ class LocaleJsonStore:
             return data
         try:
             disk = load_json_object(path)
-        except Exception:
-            return data
+        except Exception as exc:  # noqa: BLE001 - refuse overwrite on any read failure
+            # Refuse to overwrite disk with a stale in-memory copy when the
+            # on-disk JSON is unreadable (corruption / partial write).
+            raise ValueError(
+                f"cannot merge {path}: disk JSON unreadable ({exc})"
+            ) from exc
         try:
             raw_base = json.loads(self._base_text.get(locale, "{}"))
             base = raw_base if isinstance(raw_base, dict) else {}

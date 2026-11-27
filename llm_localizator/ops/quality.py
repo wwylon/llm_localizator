@@ -94,17 +94,12 @@ def _score_and_report(cfg: ProjectConfig, req: QualityRequest) -> OpResult:
     out = _report(cfg, req)
     if not req.score:
         return out
-    from .cloud_gate import cloud_gate
+    from .cloud_gate import cloud_session
     from .rescore import execute_rescore
 
-    from .cloud_gate import release_cloud_hold
-
-    blocked, hold_id = cloud_gate(
-        cfg, "rescore", locales=req.locales, namespaces=None, keys=None,
-    )
-    if blocked is not None:
-        return blocked
-    try:
+    with cloud_session(cfg, "rescore", locales=req.locales, namespaces=None, keys=None) as blocked:
+        if blocked is not None:
+            return blocked
         scored = execute_rescore(cfg, locales=req.locales, model=req.model, dry_run=False)
         out.lines.append("score: " + (scored.summary or "done"))
         out.lines.extend(f"  {line}" for line in scored.lines[-10:])
@@ -113,5 +108,3 @@ def _score_and_report(cfg: ProjectConfig, req: QualityRequest) -> OpResult:
             out.ok = False
             out.exit_code = max(out.exit_code, scored.exit_code)
         return out
-    finally:
-        release_cloud_hold(cfg, hold_id)

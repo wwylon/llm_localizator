@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 SCORER_VERSION_BT = "bt-1"
-SCORER_VERSION_LQS = "lqs-1"
+SCORER_VERSION_LQS = "lqs-2"  # ADR-158: optional issues[] + severity caps
 
 # LQS judge dimensions (see pipeline/judge.py). BT has no dimensional breakdown.
 SOFT_DIMENSIONS_LQS: tuple[str, ...] = (

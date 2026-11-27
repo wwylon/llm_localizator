@@ -367,135 +367,26 @@ def generate_blueprint(
     pin = _pinned_model(cfg, job, locale) if gpu_job else ""
     models = _job_models(cfg, job, pin) if gpu_job else set()
     vram = derive_vram(models, vram_overrides) if gpu_job else 0.0
-
-    if locale is not None:
-        locales = locale
-        desc_locales = locale
-    else:
-        active = cfg.active_targets()
-        locales = ",".join(active[:1] if job == "bakeoff" else active)
-        frozen_n = len(cfg.frozen)
-        desc_locales = (
-            f"{len(active)} active locale{'s' if len(active) != 1 else ''}"
-            + (f" ({frozen_n} frozen)" if frozen_n else "")
-        )
+    locales, desc_locales = _blueprint_locales(cfg, job, locale)
 
     one_off = task_id is not None
     tid = task_id or task_id_for(job, locale)
-    if job == "agent-hardcoded":
-        args = ["run-agent-hardcoded", _yaml_scalar(cfg.name), "--llm"]
-    else:
-        args = [f"run-{job}", _yaml_scalar(cfg.name), "--locales", _yaml_str(locales)]
-        # Per-job extra args (values filled from the config).
-        extra = {
-            # No --model: run-translate resolves model_for(locale) and keeps the [locales.roles] secondary pass.
-            # [translate] batch_size (it used to be a hardcoded 10); cloud locales use cloud_batch_size at run time.
-            "translate": ["--batch-size", _yaml_str(str(batch_size or cfg.translate_batch_size or 10))],
-            "review": ["--model", _yaml_str(pin)],
-            "improve": ["--limit", _yaml_str(str(cfg.improve_limit)), "--model", _yaml_str(pin)],
-            "rescore": ["--model", _yaml_str(pin)],
-            "bakeoff": ["--limit", '"30"'],
-            "sync": ["--no-translate"],   # S6: gather-only; translate is re-queued via on_complete.
-        }
-        job_extra = extra.get(job, [])
-        if cloud and "--model" in job_extra:
-            at = job_extra.index("--model")
-            job_extra = job_extra[:at] + job_extra[at + 2:]
-        args += job_extra
-        if job == "translate" and locale is not None:
-            # Per-locale tasks are the operator thaw/submit path (ADR-15): a plain `tq retry` runs small backlogs too.
-            args.append("--ignore-min-keys")
-    overridable = list(_OVERRIDABLE.get(job, ("--locales", "--dry-run")))
-
+    args = _job_args(cfg, job, locale, locales, pin, cloud, batch_size)
     if extra_args:
         args = _apply_extra_args(args, extra_args)
-
+    overridable = list(_OVERRIDABLE.get(job, ("--locales", "--dry-run")))
     priority = _PRIORITY.get(job, 50)
 
-    health_block = ""
-    if gpu_job:
-        health_url = _url_without_userinfo(f"{cfg.provider.url.rstrip('/')}/api/tags")
-        residents = _resident_ok_models(cfg, job, pin)
-        resident_yaml = ", ".join(_yaml_str(m) for m in residents)
-        # S1: block while keep_alive residue leaves too little free VRAM.
-        health_block = f"""
-requires_services:
-  - name:              {SERVICE_NAME}
-    health_url:        {_yaml_str(health_url)}
-    timeout_sec:       5
-    min_vram_free_gib: {vram}
-    # Pass when the pinned model is already loaded (keep_alive); no unload/reload.
-    resident_ok_models: [{resident_yaml}]
-"""
-
-    resources = f"""resources:
-  cpu_cores:    1
-  ram_gib:      0.5
-"""
-    if cloud:
-        resources += """  # Cloud job: hosted models only, no GPU reservation or ollama lock.
-"""
-    if gpu_job:
-        resources += f"""  # Pinned model: {pin}.
-  gpu_vram_gib: {vram}
-  locks:        [{OLLAMA_LOCK}]
-"""
-
+    health_block = _health_block(cfg, job, pin, vram) if gpu_job else ""
+    hung_block = _HUNG_BLOCK if llm_job else ""
     # Base translate keeps on_complete for sync/improve chaining. Per-locale
-    # translate jobs do not — they are operator-scheduled independently.
-    chain_block = ""
-    if one_off:
-        pass  # one-off runs never schedule or chain other tasks
-    elif job == "sync":
-        chain_block = f"""
-# S4: re-queue translate when gather finishes (do not call tq from the task).
-on_complete: [{TASK_IDS['translate']}]
+    # translate jobs do not -- they are operator-scheduled independently.
+    # One-off runs never schedule or chain other tasks.
+    chain_block = "" if one_off or locale is not None else _CHAIN_BLOCKS.get(job, "")
+    teardown_block = _teardown_block(cfg, job, pin) if gpu_job else ""
+    resources = _resources_block(cloud, gpu_job, pin, vram)
 
-# S3: nightly gather before improve.
-schedule:
-  cron: "30 1 * * *"
-"""
-    elif job == "improve":
-        chain_block = f"""
-# S4: wake again whenever translate completes successfully.
-depends_on: [{TASK_IDS['translate']}]
-rearm_on:   upstream_success
-
-# S3: overnight polish when the card is free.
-schedule:
-  cron: "0 2 * * *"
-"""
-    elif job == "translate" and locale is None:
-        chain_block = f"""
-# Phase 2: automated LLM review after translate completes.
-on_complete: [{TASK_IDS['review']}]
-"""
-
-    hung_block = ""
-    if llm_job:
-        hung_block = f"""
-# S8: LLM single-key calls can exceed the global hung default (~25s silence).
-hung_task_k: {GPU_HUNG_TASK_K}
-"""
-
-    teardown_block = ""
-    if gpu_job:
-        teardown_pin = _teardown_model(cfg, job, pin)
-        teardown_block = f"""
-# S5: free VRAM before releasing the ollama lock (best-effort).
-teardown:
-  command:     ollama
-  args:        [stop, {_yaml_str(teardown_pin)}]
-  best_effort: true
-  timeout_sec: 30
-"""
-
-    header = (
-        "# One-off run generated by llm-localizator submit; removed once it settles.\n"
-        if one_off else
-        "# Generated by `llm-localizator init --taskqueue` -- do not hand-edit.\n"
-        "# Regenerate after changing [locales] or [locales.models] in .llm-localize.toml.\n"
-    )
+    header = _ONE_OFF_HEADER if one_off else _GENERATED_HEADER
     kind = ("one-off " if one_off else "") + ("cloud " if cloud else "")
     return f"""{header}task_id:          {tid}
 description:      {_yaml_str(f"llm_localizator {kind}{job} for {cfg.name} ({desc_locales})")}
@@ -511,6 +402,134 @@ priority:         {priority}
 overridable_args: [{', '.join(overridable)}]
 
 {resources}"""
+
+
+# ---- generate_blueprint pieces ----------------------------------------------
+# Output is golden-tested byte for byte (tests/projects/test_blueprint_golden.py):
+# consumers sync these files into experiments/operator_queue/.
+
+_ONE_OFF_HEADER = "# One-off run generated by llm-localizator submit; removed once it settles.\n"
+_GENERATED_HEADER = (
+    "# Generated by `llm-localizator init --taskqueue` -- do not hand-edit.\n"
+    "# Regenerate after changing [locales] or [locales.models] in .llm-localize.toml.\n"
+)
+
+_HUNG_BLOCK = f"""
+# S8: LLM single-key calls can exceed the global hung default (~25s silence).
+hung_task_k: {GPU_HUNG_TASK_K}
+"""
+
+_CHAIN_BLOCKS = {
+    "sync": f"""
+# S4: re-queue translate when gather finishes (do not call tq from the task).
+on_complete: [{TASK_IDS['translate']}]
+
+# S3: nightly gather before improve.
+schedule:
+  cron: "30 1 * * *"
+""",
+    "improve": f"""
+# S4: wake again whenever translate completes successfully.
+depends_on: [{TASK_IDS['translate']}]
+rearm_on:   upstream_success
+
+# S3: overnight polish when the card is free.
+schedule:
+  cron: "0 2 * * *"
+""",
+    "translate": f"""
+# Phase 2: automated LLM review after translate completes.
+on_complete: [{TASK_IDS['review']}]
+""",
+}
+
+
+def _blueprint_locales(cfg: ProjectConfig, job: str, locale: str | None) -> tuple[str, str]:
+    """``--locales`` value and the human description of it."""
+    if locale is not None:
+        return locale, locale
+    active = cfg.active_targets()
+    locales = ",".join(active[:1] if job == "bakeoff" else active)
+    frozen_n = len(cfg.frozen)
+    desc = (
+        f"{len(active)} active locale{'s' if len(active) != 1 else ''}"
+        + (f" ({frozen_n} frozen)" if frozen_n else "")
+    )
+    return locales, desc
+
+
+def _job_args(
+    cfg: ProjectConfig, job: str, locale: str | None, locales: str, pin: str,
+    cloud: bool, batch_size: int | None,
+) -> list[str]:
+    if job == "agent-hardcoded":
+        return ["run-agent-hardcoded", _yaml_scalar(cfg.name), "--llm"]
+    args = [f"run-{job}", _yaml_scalar(cfg.name), "--locales", _yaml_str(locales)]
+    if job == "translate":
+        # No --model: run-translate resolves model_for(locale) and keeps the [locales.roles] secondary pass.
+        # [translate] batch_size (it used to be a hardcoded 10); cloud locales use cloud_batch_size at run time.
+        job_extra = ["--batch-size", _yaml_str(str(batch_size or cfg.translate_batch_size or 10))]
+    elif job in ("review", "rescore"):
+        job_extra = ["--model", _yaml_str(pin)]
+    elif job == "improve":
+        job_extra = ["--limit", _yaml_str(str(cfg.improve_limit)), "--model", _yaml_str(pin)]
+    elif job == "bakeoff":
+        job_extra = ["--limit", '"30"']
+    elif job == "sync":
+        job_extra = ["--no-translate"]  # S6: gather-only; translate is re-queued via on_complete.
+    else:
+        job_extra = []
+    if cloud and "--model" in job_extra:
+        at = job_extra.index("--model")
+        job_extra = job_extra[:at] + job_extra[at + 2:]
+    args += job_extra
+    if job == "translate" and locale is not None:
+        # Per-locale tasks are the operator thaw/submit path (ADR-15): a plain `tq retry` runs small backlogs too.
+        args.append("--ignore-min-keys")
+    return args
+
+
+def _health_block(cfg: ProjectConfig, job: str, pin: str, vram: float) -> str:
+    health_url = _url_without_userinfo(f"{cfg.provider.url.rstrip('/')}/api/tags")
+    resident_yaml = ", ".join(_yaml_str(m) for m in _resident_ok_models(cfg, job, pin))
+    # S1: block while keep_alive residue leaves too little free VRAM.
+    return f"""
+requires_services:
+  - name:              {SERVICE_NAME}
+    health_url:        {_yaml_str(health_url)}
+    timeout_sec:       5
+    min_vram_free_gib: {vram}
+    # Pass when the pinned model is already loaded (keep_alive); no unload/reload.
+    resident_ok_models: [{resident_yaml}]
+"""
+
+
+def _resources_block(cloud: bool, gpu_job: bool, pin: str, vram: float) -> str:
+    resources = """resources:
+  cpu_cores:    1
+  ram_gib:      0.5
+"""
+    if cloud:
+        resources += """  # Cloud job: hosted models only, no GPU reservation or ollama lock.
+"""
+    if gpu_job:
+        resources += f"""  # Pinned model: {pin}.
+  gpu_vram_gib: {vram}
+  locks:        [{OLLAMA_LOCK}]
+"""
+    return resources
+
+
+def _teardown_block(cfg: ProjectConfig, job: str, pin: str) -> str:
+    # S5: free VRAM before releasing the ollama lock (best-effort).
+    return f"""
+# S5: free VRAM before releasing the ollama lock (best-effort).
+teardown:
+  command:     ollama
+  args:        [stop, {_yaml_str(_teardown_model(cfg, job, pin))}]
+  best_effort: true
+  timeout_sec: 30
+"""
 
 
 def _apply_extra_args(args: list[str], extra: dict[str, str]) -> list[str]:

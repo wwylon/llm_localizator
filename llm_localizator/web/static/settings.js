@@ -507,10 +507,11 @@
       // Match rows by locale: the table prepends a synthetic "default" row, so indexes are shifted by one and the
       // ADR-12 confirm used to fire on almost every save.
       var prevByLocale = data._assignBaseline || {};
+      // ADR-12: confirm only when a model pin changes. Role-only edits (translator/judge/both) do not need bakeoff.
       var modelChanged = body.locale_assignments.some(function (row) {
         var prev = prevByLocale[row.locale];
         if (!prev) return !!row.model;
-        return (row.model || "") !== (prev.model || "") || (row.role || "") !== (prev.role || "");
+        return (row.model || "") !== (prev.model || "");
       });
       if (modelChanged && !confirmModelWrite()) return;
       if (modelChanged) body.allow_model_writes = true;

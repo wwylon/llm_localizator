@@ -28,6 +28,9 @@ _GLOBAL_IGNORED = {
 
 #: (command, dest) -> why the web leaves it out. Add here only with a reason.
 _WEB_IGNORED = {
+    ("report", "out"): "a server-side path; the web shows or downloads data.text instead",
+    ("cycle", "follow"): "following blocks the HTTP request for up to an hour; the web polls instead",
+    ("cycle", "follow_timeout"): "only used with --follow, which the web never sets",
     ("engine", "json"): "CLI output format; the web reads the result data",
     ("documents", "draft_edits"): "prints draft diffs to the terminal and writes nothing",
     ("run-documents", "draft_edits"): "prints draft diffs to the terminal and writes nothing",
@@ -49,7 +52,7 @@ _WEB_IGNORED = {
     ("guide", "yes"): "answers terminal prompts; the web guide asks nothing",
     ("guide", "no_input"): "answers terminal prompts; the web guide asks nothing",
     ("init", "yes"): "answers terminal prompts; the web setup has its own confirm",
-    ("init", "approach"): "not wired yet: plan D4 adds approach to the setup wizard",
+    ("init", "approach"): "setup wizard records approach via POST /api/setup (plan D4)",
 }
 
 #: Handled inline in ``dispatch._dispatch_op_body`` rather than in ``_REGISTRY``.
@@ -117,6 +120,8 @@ def test_ignore_list_has_no_stale_entries() -> None:
 def test_dropped_options_now_reach_the_requests(monkeypatch, tmp_path) -> None:
     """The four options the survey found dropped (plan D1) arrive in the request objects."""
     seen = {}
+    # Engine works without tq; default path does not need confirm.
+    monkeypatch.setattr("llm_localizator.projects.taskqueue.tq_available", lambda: False)
     monkeypatch.setattr(dispatch_cmds, "op_agent_hardcoded",
                         lambda cfg, req: seen.setdefault("ah", req) and _Result())
     monkeypatch.setattr(dispatch_cmds, "op_bakeoff",

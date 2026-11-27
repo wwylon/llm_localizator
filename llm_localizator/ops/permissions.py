@@ -91,6 +91,11 @@ OPERATIONS = (
     "engine",
     "queue-engine",
     "approach",
+    "review-risk",
+    "glossary-learn",
+    "cycle",
+    "normalize",
+    "report",
 )
 
 # role index: Admin, Supervisor, Translator, Developer
@@ -118,6 +123,11 @@ DEFAULT_MATRIX: dict[str, tuple[bool, bool, bool, bool]] = {
     "import": (True, True, False, True),
     "migrate-state": (True, False, False, False),
     "adopt": (True, False, False, False),
+    "review-risk": (True, True, True, True),     # read-only report
+    "glossary-learn": (True, True, False, False),  # proposes; write=true edits the glossary
+    "cycle": (True, True, False, False),         # may queue translate / repair
+    "normalize": (True, True, False, False),     # report by default; write=true edits catalogues
+    "report": (True, True, True, True),          # read-only summary page
     "sync": (True, True, False, False),
     "doctor": (True, False, False, True),
     "guide": (True, True, True, True),

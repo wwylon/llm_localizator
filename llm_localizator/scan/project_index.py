@@ -113,8 +113,13 @@ class ProjectIndex:
         sources: dict[str, set[str]] = {}       # Swift file name -> targets that compile it
         resources: dict[str, set[str]] = {}     # resource file name -> targets that ship it
         seen_pbx = False
+        from .base import SKIP_DIR_PARTS
+
+        hard_skip = frozenset(p.lower() for p in SKIP_DIR_PARTS) | frozenset(
+            d.lower() for d in CATALOGUE_SKIP_DIRS
+        )
         for dirpath, dirnames, filenames in os.walk(self.root) if self.root else ():
-            dirnames[:] = [d for d in dirnames if d not in CATALOGUE_SKIP_DIRS]
+            dirnames[:] = [d for d in dirnames if d.lower() not in hard_skip]
             for name in filenames:
                 path = os.path.join(dirpath, name)
                 try:

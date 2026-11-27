@@ -11,7 +11,7 @@ from ..pipeline.run_manifest import RunManifest, config_fingerprint
 from ..pipeline.scoring import PendingScoreItem, rescore_items, score_model_for
 from ..projects import ProjectConfig, load_glossary
 from ..projects.taskqueue import TaskqueueNotFound, tq_available
-from .cloud_gate import cloud_gate, release_cloud_hold
+from .cloud_gate import cloud_session
 from .enqueue import enqueue_namespace_jobs
 from .queue_policy import should_enqueue
 from ..providers import project_provider
@@ -239,16 +239,19 @@ def op_rescore(
         not req.dry_run
         and should_enqueue(submit=req.submit, inline=req.inline, tq=tq_available())
     )
-    hold_id: str | None = None
-    if not req.dry_run:
-        blocked, hold_id = cloud_gate(
-            cfg, "rescore", locales=req.locales,
-            namespaces=resolve_namespaces(req.namespace, req.namespaces),
-            keys=list(req.keys) if req.keys else None,
-            take_hold=not enqueue,
-        )
+    with cloud_session(
+        cfg, "rescore", locales=req.locales,
+        namespaces=resolve_namespaces(req.namespace, req.namespaces),
+        keys=list(req.keys) if req.keys else None,
+        take_hold=not enqueue,
+        skip=req.dry_run,
+    ) as blocked:
         if blocked is not None:
             return blocked
+        return _op_rescore_body(cfg, req, enqueue=enqueue, report=report)
+
+
+def _op_rescore_body(cfg, req, *, enqueue: bool, report: Reporter | None) -> OpResult:
     if enqueue:
         overrides: dict[str, str] = {}
         locales = list(req.locales) if req.locales else list(cfg.active_targets())
@@ -279,25 +282,15 @@ def op_rescore(
         except TaskqueueNotFound as exc:
             return OpResult(ok=False, exit_code=1, command="rescore", summary=str(exc))
 
-    if req.submit and not tq_available():
-        return OpResult(
-            ok=False,
-            exit_code=1,
-            command="rescore",
-            summary="the 'tq' command is not on PATH. Install the taskqueue package.",
-        )
-
-    try:
-        return execute_rescore(
-            cfg,
-            locales=req.locales,
-            namespaces=resolve_namespaces(req.namespace, req.namespaces),
-            model=req.model,
-            dry_run=req.dry_run,
-            stale_only=req.stale_only,
-            below_score=req.below_score,
-            keys=list(req.keys) if req.keys else None,
-            report=report,
-        )
-    finally:
-        release_cloud_hold(cfg, hold_id)
+    # Local run when not enqueued. Cloud hold is owned by cloud_session in op_rescore.
+    return execute_rescore(
+        cfg,
+        locales=req.locales,
+        namespaces=resolve_namespaces(req.namespace, req.namespaces),
+        model=req.model,
+        dry_run=req.dry_run,
+        stale_only=req.stale_only,
+        below_score=req.below_score,
+        keys=list(req.keys) if req.keys else None,
+        report=report,
+    )

@@ -111,12 +111,14 @@
     s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/__(.+?)__/g, "<strong>$1</strong>");
     s = s.replace(/\*(.+?)\*/g, "<em>$1</em>");
-    s = s.replace(/_(.+?)_/g, "<em>$1</em>");
+    s = s.replace(/(^|[^A-Za-z0-9_])_([^_\n]+?)_(?![A-Za-z0-9_])/g, "$1<em>$2</em>");
     s = s.replace(/`(.+?)`/g, "<code>$1</code>");
     // Only http(s)/mailto/relative targets; quotes cannot break out of href.
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function (_m, label, url) {
-      var u = url.trim();
-      if (!/^(https?:|mailto:|\/|#|\.\.?\/)/i.test(u) && /^[a-z][a-z0-9+.-]*:/i.test(u)) {
+      // Browsers drop control chars and whitespace inside schemes
+      // ("java\tscript:"), so strip them first and allow-list the rest.
+      var u = url.replace(/[\u0000- \u007f-\u009f]/g, "");
+      if (!/^(https?:\/\/|mailto:|\/(?!\/)|#|\.\.?\/)/i.test(u)) {
         return label;
       }
       u = u.replace(/"/g, "&quot;").replace(/'/g, "&#39;");

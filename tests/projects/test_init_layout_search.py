@@ -47,3 +47,26 @@ def test_most_siblings_wins(tmp_path):
     for loc in ("en", "pl", "de", "fr"):
         _json(tmp_path / "zz" / "deep" / f"{loc}.json", {"k": "v"})
     assert detect_layout(tmp_path)[1] == "zz/deep/{locale}.json"
+
+
+def test_chrome_messages_layout(tmp_path):
+    for loc in ("en", "pl"):
+        _json(tmp_path / "_locales" / loc / "messages.json", {
+            "appName": {"message": "Demo", "description": "name"},
+        })
+    assert detect_layout(tmp_path) == (
+        "chrome-messages", "_locales/{locale}/messages.json", None,
+    )
+
+
+def test_qt_ts_layout(tmp_path):
+    for loc in ("en", "pl"):
+        path = tmp_path / "translations" / f"app_{loc}.ts"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            '<?xml version="1.0"?><TS><context><name>App</name>'
+            '<message><source>Hi</source><translation>Hi</translation></message>'
+            "</context></TS>\n",
+            encoding="utf-8",
+        )
+    assert detect_layout(tmp_path)[:2] == ("qt-ts", "translations/app_{locale}.ts")

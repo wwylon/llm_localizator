@@ -107,6 +107,11 @@ from .translate_process import (  # noqa: F401  (re-exported: tests and ops impo
     ICU_FAILED, _Loc, _append_flag, _dual_candidate, _process_translation, _split_blocked, _try_glossary_answer,
     _try_tm_hit,
 )
+from .translate_run import (  # noqa: F401
+    batch_glossary as _batch_glossary,
+    start_manifest as _start_manifest,
+    summary_line as _summary_line,
+)
 
 @dataclass
 class TranslationResult:
@@ -140,28 +145,6 @@ class TranslationResult:
         if self.total and not self.written and not self.score_only:
             return 1
         return 0
-
-
-@dataclass(frozen=True)
-class RunContext:
-    """Immutable configuration bundle for a translate run.
-
-    Passed to _run_translation_locked; separates config from mutable state.
-    """
-    cfg: ProjectConfig
-    catalog: Catalog
-    glossary: dict
-    examples_by_locale: dict
-    notes: ContextNotes
-    threshold: float
-    n_samples: int
-    batch_size: int
-    force: bool
-    trigger: str
-    pre_translate: bool
-    only_keys: dict | None
-    named_keys: list | None
-    defer_scoring: bool
 
 
 def min_keys_skip_message(
@@ -378,25 +361,13 @@ def run_translation(
         trigger = "pre-translate"
     targets = _order_locales(cfg, cfg.resolve_locales(locales))
     ns_list = namespaces if namespaces is not None else cfg.namespaces_for(catalog)
-    if named_keys:
-        from ..catalog.state import split_operator_key, state_key
-
-        resolved = [
-            state_key(*split_operator_key(raw, set(ns_list)))
-            for raw in named_keys
-        ]
-        only_keys = {loc: set(resolved) for loc in targets}
-    if only_missing:
-        gaps = missing_keys(cfg, catalog, locales=targets, namespaces=ns_list)
-        if only_keys is None:
-            only_keys = gaps
-        else:
-            only_keys = {
-                loc: keys & gaps.get(loc, set()) for loc, keys in only_keys.items()
-            }
-        if not any(only_keys.values()):
-            report("(100%) No missing keys - nothing to do.")
-            return TranslationResult()
+    only_keys = _resolve_only_keys(
+        cfg, catalog, targets, ns_list, only_keys,
+        named_keys=named_keys, only_missing=only_missing,
+    )
+    if only_missing and not any(only_keys.values()):
+        report("(100%) No missing keys - nothing to do.")
+        return TranslationResult()
 
     held: list[WorkItem] = []
     unrecorded: list[WorkItem] = []
@@ -405,45 +376,12 @@ def run_translation(
         locales=targets, namespaces=ns_list, force=force, only_keys=only_keys, held=held,
         unrecorded=unrecorded,
     )
-    if unrecorded:
-        by_locale: dict[str, int] = {}
-        for item in unrecorded:
-            by_locale[item.locale] = by_locale.get(item.locale, 0) + 1
-        report(
-            "left as is: "
-            + ", ".join(f"{loc} {n}" for loc, n in sorted(by_locale.items()))
-            + " existing translation(s) with no state record; "
-            "run `adopt` to record them, or --force / --keys to retranslate"
-        )
+    _report_unrecorded(unrecorded, report)
     if held and not dry_run:
         from .tiers import ticket_held
 
         ticket_held(cfg, held, report)
-    spec = get_standard(getattr(cfg, "catalog_standard", None))
-    kept_work = []
-    for item in work:
-        err = spec.syntax_error(item.source)
-        if err:
-            report(f"    SKIP {item.namespace}.{item.key}: {err}")
-            continue
-        kept_work.append(item)
-    work = kept_work
-    if icu_only or plain_only:
-        from ..core.icu import needs_icu_decomposition
-        from ..core.standards import uses_icu as _uses_icu
-
-        if _uses_icu(getattr(cfg, "catalog_standard", None)):
-            filtered = []
-            for item in work:
-                heavy = needs_icu_decomposition(item.source)
-                if icu_only and not heavy:
-                    continue
-                if plain_only and heavy:
-                    continue
-                filtered.append(item)
-            work = filtered
-            lane = "icu-only" if icu_only else "plain-only"
-            report(f"    residual lane={lane}: {len(work)} key(s)")
+    work = _filter_work(cfg, work, icu_only=icu_only, plain_only=plain_only, report=report)
     pin_guess = cfg.model_for(targets[0] if targets else "")
     defer_scoring = should_defer_scoring_for_translate(
         cfg, pin_guess, n_samples=n_samples,
@@ -454,34 +392,15 @@ def run_translation(
             cfg, catalog, state, scores,
             locales=targets, namespaces=ns_list, only_keys=only_keys,
         )
-    min_keys = int(getattr(cfg, "translate_min_keys", 50) or 0)
     skipped_floor = False
     if work and not dry_run:
-        by_locale: dict[str, list] = {}
-        for item in work:
-            by_locale.setdefault(item.locale, []).append(item)
-        kept = []
-        for loc, items in by_locale.items():
-            skip_msg = min_keys_skip_message(
-                len(items), min_keys,
-                force=force, flagged=only_keys is not None,
-                ignore_min_keys=ignore_min_keys, locale=loc,
-            )
-            if skip_msg:
-                report(skip_msg)
-                skipped_floor = True
-                continue
-            kept.extend(items)
-        work = kept
+        work, skipped_floor = _apply_min_keys_floor(
+            cfg, work, force=force, flagged=only_keys is not None,
+            ignore_min_keys=ignore_min_keys, report=report,
+        )
     from ..catalog.budget import BudgetStore
-    from ..catalog.cloud_cost import cloud_run_decision
-    decision = cloud_run_decision(
-        cfg, targets,
-        {loc: [item.source for item in work if item.locale == loc] for loc in targets},
-        named_keys=named_keys,
-        batch_size=batch_size,
-        take_hold=not dry_run,
-    )
+
+    decision = _cloud_gate(cfg, targets, work, named_keys, batch_size, dry_run)
     if decision.message:
         report(decision.message)
     if decision.refuse:
@@ -492,41 +411,14 @@ def run_translation(
             if skipped_floor and not dry_run:
                 return TranslationResult(total=0, dry_run=False)
             report("(100%) Everything is already translated and up to date.")
-            return TranslationResult(total=len(work) if work else len(pending_bt), dry_run=dry_run)
+            return TranslationResult(total=0, dry_run=dry_run)
 
         result = TranslationResult(
             total=len(work) if work else len(pending_bt), dry_run=dry_run,
             score_only=not work,
         )
-
         if not work and pending_bt:
             report(f"resuming deferred scoring: {len(pending_bt)} key(s)")
-
-        _providers: dict[str, Provider] = {}
-
-        def _provider_for(locale: str) -> Provider:
-            if provider is not None and not cfg.locale_providers:
-                return provider
-            if provider is not None and cfg.provider_kind_for(locale) == (
-                cfg.provider.kind or "ollama"
-            ):
-                return provider
-            cached = _providers.get(locale)
-            if cached is not None:
-                return cached
-            resolved = provider_for_locale(cfg, locale, report=report)
-            _providers[locale] = resolved
-            return resolved
-
-        if targets:
-            probe_locale = targets[0]
-        elif work:
-            probe_locale = work[0].locale
-        elif pending_bt:
-            probe_locale = pending_bt[0].locale
-        else:
-            probe_locale = ""
-        probe = _provider_for(probe_locale)
 
         prefix = "DRY RUN - " if dry_run else ""
         if work:
@@ -535,55 +427,193 @@ def run_translation(
                 f"{prefix}Translating {len(work)} key-locale pair(s) across {len(ns_list)} namespace(s)",
             )
         if dry_run:
-            for message in dry_run_messages(
-                work,
-                label_of=lambda item: (
-                    f"{item.namespace}.{item.key} -> {item.locale}"
-                    f" [{item.status}] current={item.current!r}"
-                ),
-            ):
-                report(message)
-            if pending_bt:
-                report(f"Would also deferred-score {len(pending_bt)} key(s).")
-            report(f"(100%) Dry run complete. Would translate {len(work)} key(s).")
+            # Before any provider is built: a dry run needs no key or server.
+            _report_dry_run(work, pending_bt, report)
             return result
 
-        def _translate_under_lock() -> TranslationResult:
-            return _run_translation_locked(
-                cfg=cfg,
-                catalog=catalog,
-                provider=provider,
-                work=work,
-                result=result,
-                targets=targets,
-                ns_list=ns_list,
-                glossary=glossary,
-                examples_by_locale=examples_by_locale,
-                notes=notes,
-                state=state,
-                history=history,
-                scores=scores,
-                tm=tm,
-                threshold=threshold,
-                n_samples=n_samples,
-                batch_size=batch_size,
-                force=force,
-                trigger=trigger,
-                pre_translate=pre_translate,
-                report=report,
-                _provider_for=_provider_for,
-                probe=probe,
-                only_keys=only_keys,
-                defer_scoring=defer_scoring,
-                pending_bt_resume=pending_bt,
-                named_keys=named_keys,
-            )
+        _provider_for = _ProviderResolver(cfg, provider, report)
+        probe = _provider_for(_probe_locale(targets, work, pending_bt))
 
         with project_mutation_lock(cfg):
-            return _translate_under_lock()
+            # Re-check under the lock: the early check can race a peer that
+            # was mid-flush (false block) or crashed after it (missed block).
+            blocked = flush_block_message(cfg.state_root())
+            if blocked:
+                report(blocked)
+                return TranslationResult(aborted=True)
+            return _run_translation_locked(
+                cfg=cfg, catalog=catalog, provider=provider, work=work, result=result,
+                targets=targets, ns_list=ns_list, glossary=glossary,
+                examples_by_locale=examples_by_locale, notes=notes, state=state,
+                history=history, scores=scores, tm=tm, threshold=threshold,
+                n_samples=n_samples, batch_size=batch_size, force=force, trigger=trigger,
+                pre_translate=pre_translate, report=report, _provider_for=_provider_for,
+                probe=probe, only_keys=only_keys, defer_scoring=defer_scoring,
+                pending_bt_resume=pending_bt, named_keys=named_keys,
+            )
     finally:
         if hold_id:
             BudgetStore(cfg.budget_root()).release(hold_id)
+
+
+# ---- run_translation helpers ------------------------------------------------
+
+
+def _resolve_only_keys(
+    cfg: ProjectConfig,
+    catalog: Catalog,
+    targets: list[str],
+    ns_list: list[str],
+    only_keys: dict[str, set[str]] | None,
+    *,
+    named_keys: list[str] | None,
+    only_missing: bool,
+) -> dict[str, set[str]] | None:
+    """Narrow the run to named keys and/or keys missing from the catalogue."""
+    if named_keys:
+        from ..catalog.state import split_operator_key, state_key
+
+        resolved = {
+            state_key(*split_operator_key(raw, set(ns_list)))
+            for raw in named_keys
+        }
+        only_keys = {loc: set(resolved) for loc in targets}
+    if only_missing:
+        gaps = missing_keys(cfg, catalog, locales=targets, namespaces=ns_list)
+        if only_keys is None:
+            only_keys = gaps
+        else:
+            only_keys = {
+                loc: keys & gaps.get(loc, set()) for loc, keys in only_keys.items()
+            }
+    return only_keys
+
+
+def _report_unrecorded(unrecorded: list[WorkItem], report: Reporter) -> None:
+    if not unrecorded:
+        return
+    counts: dict[str, int] = {}
+    for item in unrecorded:
+        counts[item.locale] = counts.get(item.locale, 0) + 1
+    report(
+        "left as is: "
+        + ", ".join(f"{loc} {n}" for loc, n in sorted(counts.items()))
+        + " existing translation(s) with no state record; "
+        "run `adopt` to record them, or --force / --keys to retranslate"
+    )
+
+
+def _filter_work(
+    cfg: ProjectConfig, work: list[WorkItem], *, icu_only: bool, plain_only: bool,
+    report: Reporter,
+) -> list[WorkItem]:
+    """Drop sources with syntax errors; apply the ICU / plain residual lane."""
+    spec = get_standard(getattr(cfg, "catalog_standard", None))
+    kept: list[WorkItem] = []
+    for item in work:
+        err = spec.syntax_error(item.source)
+        if err:
+            report(f"    SKIP {item.namespace}.{item.key}: {err}")
+            continue
+        kept.append(item)
+    if not (icu_only or plain_only):
+        return kept
+    if not uses_icu(getattr(cfg, "catalog_standard", None)):
+        return kept
+    lane_items = [
+        item for item in kept
+        if bool(needs_icu_decomposition(item.source)) == bool(icu_only)
+    ]
+    lane = "icu-only" if icu_only else "plain-only"
+    report(f"    residual lane={lane}: {len(lane_items)} key(s)")
+    return lane_items
+
+
+def _apply_min_keys_floor(
+    cfg: ProjectConfig, work: list[WorkItem], *, force: bool, flagged: bool,
+    ignore_min_keys: bool, report: Reporter,
+) -> tuple[list[WorkItem], bool]:
+    """Skip locales with fewer pending keys than ``translate_min_keys``."""
+    min_keys = int(getattr(cfg, "translate_min_keys", 50) or 0)
+    by_locale: dict[str, list[WorkItem]] = {}
+    for item in work:
+        by_locale.setdefault(item.locale, []).append(item)
+    kept: list[WorkItem] = []
+    skipped = False
+    for loc, items in by_locale.items():
+        skip_msg = min_keys_skip_message(
+            len(items), min_keys,
+            force=force, flagged=flagged,
+            ignore_min_keys=ignore_min_keys, locale=loc,
+        )
+        if skip_msg:
+            report(skip_msg)
+            skipped = True
+            continue
+        kept.extend(items)
+    return kept, skipped
+
+
+def _cloud_gate(cfg, targets, work, named_keys, batch_size, dry_run):
+    from ..catalog.cloud_cost import cloud_run_decision
+
+    sources_by_locale: dict[str, list[str]] = {loc: [] for loc in targets}
+    for item in work:  # one pass, not one per locale
+        sources_by_locale.setdefault(item.locale, []).append(item.source)
+    return cloud_run_decision(
+        cfg, targets,
+        {loc: sources_by_locale.get(loc, []) for loc in targets},
+        named_keys=named_keys,
+        batch_size=batch_size,
+        take_hold=not dry_run,
+    )
+
+
+def _probe_locale(targets, work, pending_bt) -> str:
+    if targets:
+        return targets[0]
+    if work:
+        return work[0].locale
+    if pending_bt:
+        return pending_bt[0].locale
+    return ""
+
+
+def _report_dry_run(work: list[WorkItem], pending_bt: list, report: Reporter) -> None:
+    for message in dry_run_messages(
+        work,
+        label_of=lambda item: (
+            f"{item.namespace}.{item.key} -> {item.locale}"
+            f" [{item.status}] current={item.current!r}"
+        ),
+    ):
+        report(message)
+    if pending_bt:
+        report(f"Would also deferred-score {len(pending_bt)} key(s).")
+    report(f"(100%) Dry run complete. Would translate {len(work)} key(s).")
+
+
+class _ProviderResolver:
+    """Provider per locale: the injected one when it fits, else built and cached."""
+
+    def __init__(self, cfg: ProjectConfig, provider: Provider | None, report: Reporter) -> None:
+        self.cfg = cfg
+        self.provider = provider
+        self.report = report
+        self._cache: dict[str, Provider] = {}
+
+    def __call__(self, locale: str) -> Provider:
+        cfg, provider = self.cfg, self.provider
+        if provider is not None and not cfg.locale_providers:
+            return provider
+        if provider is not None and cfg.provider_kind_for(locale) == (
+            cfg.provider.kind or "ollama"
+        ):
+            return provider
+        cached = self._cache.get(locale)
+        if cached is None:
+            cached = self._cache[locale] = provider_for_locale(cfg, locale, report=self.report)
+        return cached
 
 
 @dataclass
@@ -620,6 +650,13 @@ class _Run:
     consecutive_fail: int = 0
     abort_run: bool = False
     tm_hits: int = 0
+    # Run-wide settings read by the per-locale-group helpers.
+    ns_list: Any = None
+    examples_by_locale: Any = None
+    batch_size: int = 10
+    named_keys: Any = None
+    llm_score: bool = True
+    provider_for: Any = None
 
     def queue_write(self, item, text: str) -> None:
         """Stage a catalogue write and remember the pick-time baseline for flush."""
@@ -694,40 +731,6 @@ def _coherence_for_locale(st: _Run, ns_list, locale: str):
     return coherence_index
 
 
-def _batch_glossary(cfg, notes, llm_items):
-    """The glossary for one batch: union of the domains of its keys, shared glossaries merged."""
-    domain_union: list[str] = []
-    for item in llm_items:
-        for d in cfg.glossary_domains_for(item.namespace, key_domain=notes.domain(item.namespace, item.key)) or []:
-            if d not in domain_union:
-                domain_union.append(d)
-    return effective_glossary_for(
-        cfg.glossary_path,
-        domains=domain_union or None,
-        shared=list(getattr(cfg, "glossary_shared", []) or []),
-        conflict=getattr(cfg, "glossary_conflict", "own"),
-    )
-
-
-def _summary_line(result: TranslationResult) -> str:
-    summary = f"(100%) Done. Written {result.written}/{result.total}"
-    if result.aborted:
-        summary = f"(100%) Aborted after sustained rejects. Written {result.written}/{result.total}"
-    for count, text in (
-        (len(result.rejected), "rejected (bad output -- kept existing)"),
-        (len(result.blocked), "blocked (needs_context)"),
-        (len(result.escalated), "rescued by the secondary model"),
-        (len(result.skipped), "skipped (provider errors)"),
-        (len(result.icu_failed), "icu_failed (flagged; ICU message failed whole and by fragments)"),
-        (len(result.flagged_low_score), "low-score (queued for improve)"),
-        (len(result.held), "held as drafts (below the write floor or not better)"),
-        (len(result.external_edit), "edited outside the run (kept; run adopt)"),
-    ):
-        if count:
-            summary += f", {count} {text}"
-    return summary + "."
-
-
 def _note_flush_skips(st: _Run, flushed) -> None:
     """Record catalogue keys skipped at flush because of an out-of-band edit."""
     skipped = getattr(flushed, "skipped_external", None) or []
@@ -745,25 +748,6 @@ def _note_flush_skips(st: _Run, flushed) -> None:
 
 
 
-
-
-def _start_manifest(cfg, work, pin_model, resume_locales) -> RunManifest:
-    """The run manifest for one translate job (locales, pinned model, prompt family, config fingerprint)."""
-    return RunManifest.start(
-        command="translate",
-        locales=sorted({item.locale for item in work} or set(resume_locales)),
-        model=pin_model,
-        prompt_family=cfg.prompt_family_for(
-            work[0].locale if work else (resume_locales[0] if resume_locales else "")
-        ) if (work or resume_locales) else None,
-        config_hash=config_fingerprint({
-            "domain": cfg.domain,
-            "models": dict(getattr(cfg, "models", {}) or {}),
-            "judge_model": getattr(cfg, "judge_model", None),
-            "prompt_family": getattr(cfg, "prompt_family", None),
-        }),
-        source_locale=cfg.source_locale,
-    )
 
 
 def _finish_run(
@@ -904,9 +888,6 @@ def _run_translation_locked(
         probe.ensure_ready(pin_model, report=report)
     llm_score = not defer_scoring
     phase_a_written: list[PendingScoreItem] = []
-    prefetcher_box: list = [None]  # BtPrefetcher, once the first locale group has finished
-    prefetcher_off = [False]
-    seen_written = [0]
     pending_bt_resume = list(pending_bt_resume or [])
     if len(run_models) > 1:
         report(
@@ -919,13 +900,6 @@ def _run_translation_locked(
     for item in work:
         groups[(item.locale, pin_model)].append(item)
 
-    pending: dict[tuple[str, str], dict[str, str]] = {}
-    pending_history: list[tuple[str, HistoryEvent]] = []
-    baselines: dict[tuple[str, str], dict[str, str | None]] = {}
-    pivot_cache: dict[tuple[str, str], dict[str, str]] = {}
-    target_cache: dict[tuple[str, str], dict[str, str]] = {}
-    ns_snapshots: dict[tuple[str, str], object] = {}
-
     native_notes: dict[str, dict[str, str]] = {}
     if catalog.carries_notes:
         for ns in ns_list:
@@ -935,228 +909,251 @@ def _run_translation_locked(
                 if m.note
             }
 
-    flag_store = FlagStore(cfg.flags_path)
-    # Low-score / needs_context flags opened this run must survive flush resolve
-    # (otherwise a full sweep writes then immediately clears them).
-    flags_opened: set[tuple[str, str, str]] = set()
-    max_consec = int(getattr(cfg, "translate_max_consecutive_rejects", 10) or 0)
     st = _Run(
-        cfg=cfg,
-        catalog=catalog,
-        state=state,
-        history=history,
-        scores=scores,
-        tm=tm,
-        notes=notes,
-        result=result,
-        report=report,
-        force=force,
-        only_keys=only_keys,
-        trigger=trigger,
-        pre_translate=pre_translate,
-        defer_scoring=defer_scoring,
-        n_samples=n_samples,
-        work=work,
-        pending=pending,
-        pending_history=pending_history,
-        baselines=baselines,
-        target_cache=target_cache,
-        pivot_cache=pivot_cache,
-        ns_snapshots=ns_snapshots,
+        cfg=cfg, catalog=catalog, state=state, history=history, scores=scores, tm=tm,
+        notes=notes, result=result, report=report, force=force, only_keys=only_keys,
+        trigger=trigger, pre_translate=pre_translate, defer_scoring=defer_scoring,
+        n_samples=n_samples, work=work,
+        pending={}, pending_history=[], baselines={},
+        target_cache={}, pivot_cache={}, ns_snapshots={},
         native_notes=native_notes,
-        flag_store=flag_store,
-        flags_opened=flags_opened,
+        flag_store=FlagStore(cfg.flags_path),
+        # Low-score / needs_context flags opened this run must survive flush
+        # resolve (otherwise a full sweep writes then immediately clears them).
+        flags_opened=set(),
         phase_a_written=phase_a_written,
-        max_consec=max_consec,
+        max_consec=int(getattr(cfg, "translate_max_consecutive_rejects", 10) or 0),
+        ns_list=ns_list, examples_by_locale=examples_by_locale, batch_size=batch_size,
+        named_keys=named_keys, llm_score=llm_score, provider_for=_provider_for,
     )
+    overlap = _BtOverlap(st, multi_group=len(groups) > 1)
 
-    locale_rank = {loc: idx for idx, loc in enumerate(targets)}
-    for (locale, model), items in sorted(
-        groups.items(),
-        key=lambda kv: (locale_rank.get(kv[0][0], 10_000), kv[0][0], kv[0][1]),
-    ):
-        if st.abort_run:
-            break
-        loc_provider = _provider_for(locale)
-        from ..catalog.cloud_cost import paying_cloud_kind, resolve_translation_model
-        cloud_kind = paying_cloud_kind(cfg, locale)
-        if cloud_kind:
-            model = resolve_translation_model(cfg, locale, cloud_kind)
-        score_llm = llm_score and cloud_kind is None
-        language = language_name(locale)
-        locale_threshold = improve_score_cut(cfg, scorer="bt", locale=locale)
-        register, _style_notes = cfg.style_for(locale)
-        if cfg.localize_prompt_for(model):
-            from .prompt_i18n import ensure_localized
-
-            ensure_localized(cfg, loc_provider, locale, model, report=report)
-        pivot_locale = cfg.pivot_for(locale)
-        lc = _Loc(locale=locale, model=model, loc_provider=loc_provider, language=language,
-                  register=register, score_llm=score_llm, cloud_kind=cloud_kind)
-
-        # Longer strings first so short labels can use them as siblings later.
-        items = sorted(items, key=lambda it: (-len(it.source), it.namespace, it.key))
-
-        # Exact catalogue siblings always help prompts; fuzzy near needs the flag.
-        coherence_index = _coherence_for_locale(st, ns_list, locale)
-
-        # Hosted models take much larger batches than a small local model (HAIKU_BATCH_PROBE_2026-11-14: 50 keys per
-        # request on Haiku 5.5, no parse misses, same BT, half the wall time). [translate] cloud_batch_size.
-        loc_batch = int(getattr(cfg, "translate_cloud_batch_size", 0) or batch_size) if cloud_kind else batch_size
-        queues = plan_batches(
-            items,
-            loc_batch,
-            source_of=lambda item: item.source,
-            screen_of=lambda item: notes.screen(item.namespace, item.key) or item.namespace,
-            short_batch=bool(getattr(cfg, "translate_short_batch", False)),
-        )
-
-        # Cloud async Batch: collect multi-key LLM jobs, submit once via
-        # Anthropic Message Batches / OpenAI Batch (~50% off, ADR cloud cost).
-        use_cloud_async = bool(cloud_kind) and cloud_async_batch_enabled(cfg, loc_provider)
-        pending_cloud_jobs: list[dict] = []
-
-        def _drain_cloud_async() -> None:
-            nonlocal pending_cloud_jobs
-            if not pending_cloud_jobs:
-                return
-            jobs = pending_cloud_jobs
-            pending_cloud_jobs = []
-            result_lists = translate_cloud_async_batches(
-                loc_provider, jobs, language, locale, model, cfg, register, report,
-            )
-            for job, results in zip(jobs, result_lists):
-                llm_items = job["llm_items"]
-                payloads = job["payloads"]
-                for idx, (item, translated) in enumerate(zip(llm_items, results)):
-                    if _process_translation(st, lc, idx, item, translated, llm_items, payloads):
-                        break
-                _flush_step(st)
-
-        for batch in queues:
+    try:
+        locale_rank = {loc: idx for idx, loc in enumerate(targets)}
+        for (locale, model), items in sorted(
+            groups.items(),
+            key=lambda kv: (locale_rank.get(kv[0][0], 10_000), kv[0][0], kv[0][1]),
+        ):
             if st.abort_run:
                 break
-            report_progress(st.done, len(work), f"batch of {len(batch)}")
+            lc = _translate_locale_group(st, locale, model, items)
+            overlap.after_group(lc)
 
-            llm_items = [item for item in batch
-                         if not (_try_glossary_answer(st, lc, item) or _try_tm_hit(st, lc, item))]
-
-            if not llm_items:
-                _flush_step(st)
-                continue
-
-            batch_glossary = _batch_glossary(cfg, notes, llm_items)
-            batch_sources = [item.source for item in llm_items]
-            glossary_block = glossary_prompt_block(
-                batch_glossary, locale, language, sources=batch_sources,
-            )
-            lc.glossary_block = glossary_block
-
-            payloads = [
-                _payload(
-                    cfg, catalog, notes, pivot_cache, pivot_locale, item,
-                    native_notes.get(item.namespace), target_cache, locale,
-                    examples=examples_by_locale.get(locale),
-                    scores=scores,
-                    tm=tm,
-                    force=force,
-                    glossary=batch_glossary,
-                    coherence_index=coherence_index,
-                    ns_snapshots=st.ns_snapshots,
-                )
-                for item in llm_items
-            ]
-
-            llm_items, payloads = _split_blocked(st, lc, llm_items, payloads)
-            if not llm_items:
-                continue
-
-            has_images = any(p.image_b64 for p in payloads)
-            if cloud_kind:
-                from ..catalog.cloud_cost import cloud_run_decision
-                batch_decision = cloud_run_decision(
-                    cfg, [locale],
-                    {locale: [item.source for item in llm_items]},
-                    named_keys=named_keys,
-                    batch_size=1,
-                    enforce_keys=False,
-                    take_hold=False,  # run-level hold already covers the ceiling
-                )
-                if batch_decision.refuse:
-                    report(batch_decision.message)
-                    result.aborted = True
-                    st.abort_run = True
-                    break
-            if lc.warm is not None:
-                from ..providers.residency import ResidencyTracker, switch
-
-                switch(
-                    loc_provider, to=model,
-                    tracker=ResidencyTracker(lc.warm), report=report,
-                )
-                lc.warm = None
-            if (
-                use_cloud_async
-                and len(llm_items) > 1
-                and not has_images
-            ):
-                pending_cloud_jobs.append({
-                    "llm_items": llm_items,
-                    "payloads": payloads,
-                    "glossary_block": glossary_block,
-                    "glossary": batch_glossary,
-                    "n_samples": n_samples,
-                    "threshold": locale_threshold,
-                    "llm_score": score_llm,
-                })
-                continue
-            if len(llm_items) == 1 or has_images:
-                results = _translate_singles(
-                    loc_provider, payloads, language, locale, model, cfg,
-                    glossary_block, register, report,
-                    glossary=batch_glossary, n_samples=n_samples, threshold=locale_threshold,
-                    llm_score=score_llm,
-                )
-            else:
-                results = _translate_batch(
-                    loc_provider, payloads, language, locale, model, cfg,
-                    glossary_block, register, report,
-                    glossary=batch_glossary, n_samples=n_samples, threshold=locale_threshold,
-                    llm_score=score_llm,
-                )
-
-            for idx, (item, translated) in enumerate(zip(llm_items, results)):
-                if _process_translation(st, lc, idx, item, translated, llm_items, payloads):
-                    break
-            _flush_step(st)
-
-        _drain_cloud_async()
-        # Overlap (cloud scorer, several locale groups): start back-translating what this group
-        # just produced while the next group translates. Scoring itself stays in phase B.
-        if defer_scoring and cloud_kind and len(groups) > 1 and not st.abort_run:
-            fresh = phase_a_written[seen_written[0]:]
-            seen_written[0] = len(phase_a_written)
-            if fresh and not prefetcher_off[0]:
-                if prefetcher_box[0] is None:
-                    from .scoring import BtPrefetcher, _CLOUD_SCORER_KINDS
-
-                    bt_provider = _bt_provider(cfg, fresh[0].locale, _provider_for, report)
-                    if (getattr(bt_provider, "kind", "") in _CLOUD_SCORER_KINDS
-                            and int(getattr(cfg, "bt_workers", 4) or 1) > 1):
-                        prefetcher_box[0] = BtPrefetcher(cfg, bt_provider, score_model_for(cfg), report)
-                    else:
-                        prefetcher_off[0] = True
-                if prefetcher_box[0] is not None:
-                    prefetcher_box[0].submit(fresh)
-
-    _finish_run(
-        cfg=cfg, catalog=catalog, notes=notes, state=state, st=st, result=result, work=work, scores=scores,
-        glossary=glossary, manifest=manifest, run_started=run_started, pin_model=pin_model,
-        pending_bt_resume=pending_bt_resume, phase_a_written=phase_a_written, flag_store=flag_store,
-        defer_scoring=defer_scoring, batch_size=batch_size, trigger=trigger, report=report,
-        provider_for=_provider_for, prefetcher=prefetcher_box[0],
-    )
-    if prefetcher_box[0] is not None:
-        prefetcher_box[0].close()
+        _finish_run(
+            cfg=cfg, catalog=catalog, notes=notes, state=state, st=st, result=result, work=work,
+            scores=scores, glossary=glossary, manifest=manifest, run_started=run_started,
+            pin_model=pin_model, pending_bt_resume=pending_bt_resume,
+            phase_a_written=phase_a_written, flag_store=st.flag_store,
+            defer_scoring=defer_scoring, batch_size=batch_size, trigger=trigger, report=report,
+            provider_for=_provider_for, prefetcher=overlap.prefetcher,
+        )
+    finally:
+        # Also on errors in the group loop: never leak BtPrefetcher threads.
+        overlap.close()
     return result
+
+
+def _translate_locale_group(st: _Run, locale: str, model: str, items: list[WorkItem]) -> _Loc:
+    """Translate one locale's work items in batches; returns the locale context."""
+    cfg, report = st.cfg, st.report
+    loc_provider = st.provider_for(locale)
+    from ..catalog.cloud_cost import paying_cloud_kind, resolve_translation_model
+
+    cloud_kind = paying_cloud_kind(cfg, locale)
+    if cloud_kind:
+        model = resolve_translation_model(cfg, locale, cloud_kind)
+    register, _style_notes = cfg.style_for(locale)
+    if cfg.localize_prompt_for(model):
+        from .prompt_i18n import ensure_localized
+
+        ensure_localized(cfg, loc_provider, locale, model, report=report)
+    lc = _Loc(locale=locale, model=model, loc_provider=loc_provider,
+              language=language_name(locale), register=register,
+              score_llm=st.llm_score and cloud_kind is None, cloud_kind=cloud_kind)
+    ctx = _GroupCtx(
+        threshold=improve_score_cut(cfg, scorer="bt", locale=locale),
+        pivot_locale=cfg.pivot_for(locale),
+        # Exact catalogue siblings always help prompts; fuzzy near needs the flag.
+        coherence_index=_coherence_for_locale(st, st.ns_list, locale),
+        use_cloud_async=bool(cloud_kind) and cloud_async_batch_enabled(cfg, loc_provider),
+    )
+
+    # Longer strings first so short labels can use them as siblings later.
+    items = sorted(items, key=lambda it: (-len(it.source), it.namespace, it.key))
+    # Hosted models take much larger batches than a small local model (HAIKU_BATCH_PROBE_2026-11-14: 50 keys per
+    # request on Haiku 5.5, no parse misses, same BT, half the wall time). [translate] cloud_batch_size.
+    loc_batch = (
+        int(getattr(cfg, "translate_cloud_batch_size", 0) or st.batch_size)
+        if cloud_kind else st.batch_size
+    )
+    queues = plan_batches(
+        items,
+        loc_batch,
+        source_of=lambda item: item.source,
+        screen_of=lambda item: st.notes.screen(item.namespace, item.key) or item.namespace,
+        short_batch=bool(getattr(cfg, "translate_short_batch", False)),
+    )
+    for batch in queues:
+        if st.abort_run:
+            break
+        report_progress(st.done, len(st.work), f"batch of {len(batch)}")
+        _process_batch(st, lc, ctx, batch)
+
+    _drain_cloud_async(st, lc, ctx)
+    # Free this locale's catalogue copies; later groups never read them.
+    # (Pivot cache is shared across locales and stays.)
+    for cache in (st.target_cache, st.ns_snapshots):
+        for ck in [k for k in cache if k[0] == locale]:
+            del cache[ck]
+    return lc
+
+
+@dataclass
+class _GroupCtx:
+    """Per-locale-group settings and the queued cloud async jobs."""
+    threshold: float
+    pivot_locale: Any
+    coherence_index: Any
+    use_cloud_async: bool
+    pending_cloud_jobs: list = field(default_factory=list)
+
+
+def _process_batch(st: _Run, lc: _Loc, ctx: _GroupCtx, batch: list[WorkItem]) -> None:
+    """Glossary/TM shortcuts, payloads, budget check, then one LLM call (or queue it)."""
+    cfg, report, locale, model = st.cfg, st.report, lc.locale, lc.model
+    llm_items = [item for item in batch
+                 if not (_try_glossary_answer(st, lc, item) or _try_tm_hit(st, lc, item))]
+    if not llm_items:
+        _flush_step(st)
+        return
+
+    batch_glossary = _batch_glossary(cfg, st.notes, llm_items)
+    glossary_block = glossary_prompt_block(
+        batch_glossary, locale, lc.language, sources=[item.source for item in llm_items],
+    )
+    lc.glossary_block = glossary_block
+    payloads = [
+        _payload(
+            cfg, st.catalog, st.notes, st.pivot_cache, ctx.pivot_locale, item,
+            st.native_notes.get(item.namespace), st.target_cache, locale,
+            examples=st.examples_by_locale.get(locale),
+            scores=st.scores,
+            tm=st.tm,
+            force=st.force,
+            glossary=batch_glossary,
+            coherence_index=ctx.coherence_index,
+            ns_snapshots=st.ns_snapshots,
+        )
+        for item in llm_items
+    ]
+    llm_items, payloads = _split_blocked(st, lc, llm_items, payloads)
+    if not llm_items:
+        return
+
+    has_images = any(p.image_b64 for p in payloads)
+    if lc.cloud_kind:
+        from ..catalog.cloud_cost import cloud_run_decision
+
+        batch_decision = cloud_run_decision(
+            cfg, [locale],
+            {locale: [item.source for item in llm_items]},
+            named_keys=st.named_keys,
+            batch_size=1,
+            enforce_keys=False,
+            take_hold=False,  # run-level hold already covers the ceiling
+        )
+        if batch_decision.refuse:
+            report(batch_decision.message)
+            st.result.aborted = True
+            st.abort_run = True
+            return
+    if lc.warm is not None:
+        from ..providers.residency import ResidencyTracker, switch
+
+        switch(lc.loc_provider, to=model, tracker=ResidencyTracker(lc.warm), report=report)
+        lc.warm = None
+    if ctx.use_cloud_async and len(llm_items) > 1 and not has_images:
+        # Cloud async Batch: collect multi-key LLM jobs, submit once via
+        # Anthropic Message Batches / OpenAI Batch (~50% off, ADR cloud cost).
+        ctx.pending_cloud_jobs.append({
+            "llm_items": llm_items,
+            "payloads": payloads,
+            "glossary_block": glossary_block,
+            "glossary": batch_glossary,
+            "n_samples": st.n_samples,
+            "threshold": ctx.threshold,
+            "llm_score": lc.score_llm,
+        })
+        return
+    translate_fn = _translate_singles if (len(llm_items) == 1 or has_images) else _translate_batch
+    results = translate_fn(
+        lc.loc_provider, payloads, lc.language, locale, model, cfg,
+        glossary_block, lc.register, report,
+        glossary=batch_glossary, n_samples=st.n_samples, threshold=ctx.threshold,
+        llm_score=lc.score_llm,
+    )
+    _apply_results(st, lc, llm_items, payloads, results)
+
+
+def _apply_results(st: _Run, lc: _Loc, llm_items, payloads, results) -> None:
+    for idx, (item, translated) in enumerate(zip(llm_items, results)):
+        if _process_translation(st, lc, idx, item, translated, llm_items, payloads):
+            break
+    _flush_step(st)
+
+
+def _drain_cloud_async(st: _Run, lc: _Loc, ctx: _GroupCtx) -> None:
+    """Submit the queued cloud async jobs for this locale group, once."""
+    jobs, ctx.pending_cloud_jobs = ctx.pending_cloud_jobs, []
+    if not jobs:
+        return
+    if st.abort_run:
+        # Budget refused or run aborted: queued jobs were approved one by
+        # one without counting each other, so sending them could pass the
+        # ceiling. Keys stay pending for the next run.
+        st.report(f"skipped {len(jobs)} queued cloud batch job(s): run aborted")
+        return
+    result_lists = translate_cloud_async_batches(
+        lc.loc_provider, jobs, lc.language, lc.locale, lc.model, st.cfg, lc.register, st.report,
+    )
+    for job, results in zip(jobs, result_lists):
+        if st.abort_run:
+            break
+        _apply_results(st, lc, job["llm_items"], job["payloads"], results)
+
+
+class _BtOverlap:
+    """Cloud scorer with several locale groups: back-translate what a group
+    produced while the next group translates. Scoring itself stays in phase B."""
+
+    def __init__(self, st: _Run, *, multi_group: bool) -> None:
+        self.st = st
+        self.enabled = multi_group and st.defer_scoring
+        self.prefetcher = None
+        self.off = False
+        self.seen = 0
+
+    def after_group(self, lc: _Loc) -> None:
+        st = self.st
+        if not (self.enabled and lc.cloud_kind) or st.abort_run:
+            return
+        fresh = st.phase_a_written[self.seen:]
+        self.seen = len(st.phase_a_written)
+        if not fresh or self.off:
+            return
+        if self.prefetcher is None:
+            from .scoring import BtPrefetcher, _CLOUD_SCORER_KINDS
+
+            bt_provider = _bt_provider(st.cfg, fresh[0].locale, st.provider_for, st.report)
+            if (getattr(bt_provider, "kind", "") in _CLOUD_SCORER_KINDS
+                    and int(getattr(st.cfg, "bt_workers", 4) or 1) > 1):
+                self.prefetcher = BtPrefetcher(st.cfg, bt_provider, score_model_for(st.cfg), st.report)
+            else:
+                self.off = True
+                return
+        self.prefetcher.submit(fresh)
+
+    def close(self) -> None:
+        if self.prefetcher is not None:
+            self.prefetcher.close()
 

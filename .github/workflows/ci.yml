@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Ruff
-        run: uvx ruff check llm_localizator
+        run: uvx ruff check llm_localizator tests scripts
 
   self-validate:
     runs-on: ubuntu-latest
@@ -64,6 +64,18 @@ jobs:
         run: uv sync --locked --extra dev
       - name: mypy ratchet (the error count may not rise)
         run: uv run python scripts/check_types.py
+
+  coverage:
+    # Serial quick lane (~4 min); push only so PRs stay fast.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (locked)
+        run: uv sync --locked --extra dev
+      - name: Coverage ratchet (may not drop below scripts/coverage_floor.txt)
+        run: uv run python scripts/coverage_gate.py
 
   audit:
     runs-on: ubuntu-latest

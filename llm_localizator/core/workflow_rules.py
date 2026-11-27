@@ -45,9 +45,13 @@ __all__ = [
 ]
 
 FIELD_SCORE = "score"
-FIELDS = (FIELD_SCORE, "status", "locale", "namespace")
+FIELD_HARDCODED = "hardcoded"
+FIELD_FINDINGS = "findings"  # 1 when the last validate block flagged this key
+FIELDS = (FIELD_SCORE, FIELD_HARDCODED, FIELD_FINDINGS, "status", "locale", "namespace")
 OPS_BY_FIELD = {
     FIELD_SCORE: ("ge", "le"),
+    FIELD_HARDCODED: ("ge", "le"),
+    FIELD_FINDINGS: ("ge", "le"),
     "status": ("is", "is_not"),
     "locale": ("is", "is_not"),
     "namespace": ("is", "is_not"),
@@ -414,10 +418,10 @@ def normalize_workflow(table: Mapping[str, Any], where: str = "workflow") -> dic
 def _matches(rule: Mapping[str, Any], ctx: Mapping[str, Any]) -> bool:
     field, op, want = rule["field"], rule["op"], rule["value"]
     have = ctx.get(field)
-    if field == FIELD_SCORE:
+    if field in (FIELD_SCORE, FIELD_HARDCODED, FIELD_FINDINGS):
         if have is None:
             return False
-        return float(have) >= want if op == "ge" else float(have) <= want
+        return float(have) >= float(want) if op == "ge" else float(have) <= float(want)
     equal = str(have if have is not None else "") == str(want)
     return equal if op == "is" else not equal
 

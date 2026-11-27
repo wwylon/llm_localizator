@@ -30,6 +30,20 @@ Flags that change *how* the work runs (`--force`, `--flagged`, `--dry-run`,
 
 ## Setup
 
+Install the queue CLI first (`tq` / `tqdaemon`). The engine never imports it
+(ADR-1); it only shells out. Until `tq` is on PATH, `llm-localizator doctor`
+reports a taskqueue **warn**, and operator commands run in-process instead of
+submitting.
+
+```bash
+# from a source checkout of tqdaemon (sibling of this repo is fine):
+uv pip install -e /path/to/tqdaemon
+# or: pip install tqdaemon
+which tq   # must resolve
+```
+
+Then wire the consumer:
+
 ```bash
 llm-localizator init --taskqueue     # base + one translate YAML per target locale
 tq sync                           # queue picks them up
@@ -53,8 +67,9 @@ Missing per-locale YAML is also created on first submit (consumer
 
 Non-dry-run `translate` / `improve` / `review` from CLI ops and the web UI
 **submit** when `tq` is on PATH (ADR-15). Dry-run stays local. Without `tq`,
-the ops layer runs locally and says so. `run-translate` remains the worker
-entrypoint (ADR-2).
+the ops layer **runs locally** (the engine never requires taskqueue). Explicit
+`inline=true` from the web still needs `confirm=true`. `run-translate` remains
+the worker entrypoint (ADR-2).
 
 ## The generated blueprint
 

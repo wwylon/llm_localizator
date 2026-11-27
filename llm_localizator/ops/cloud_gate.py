@@ -13,6 +13,9 @@ Enqueue paths should pass ``take_hold=False`` so the worker reserves later.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Iterator
+
 from ..catalog import build_catalog
 from ..catalog.budget import BudgetStore
 from ..catalog.cloud_cost import CLOUD_KINDS, paying_cloud_kind, quote_locale
@@ -21,7 +24,7 @@ from ..catalog.state import state_key
 from ..projects import ProjectConfig
 from .types import OpResult
 
-__all__ = ["cloud_gate", "paying_locales", "release_cloud_hold"]
+__all__ = ["cloud_gate", "cloud_session", "paying_locales", "release_cloud_hold"]
 
 
 def paying_locales(cfg: ProjectConfig, locales: list[str]) -> list[str]:
@@ -43,6 +46,37 @@ def release_cloud_hold(cfg: ProjectConfig, hold_id: str | None) -> None:
     if not hold_id:
         return
     BudgetStore(cfg.budget_root()).release(hold_id)
+
+
+@contextmanager
+def cloud_session(
+    cfg: ProjectConfig,
+    command: str,
+    *,
+    locales: list[str] | None,
+    namespaces: list[str] | None = None,
+    keys: list[str] | None = None,
+    batch_size: int = 5,
+    take_hold: bool = True,
+    texts_by_locale: dict[str, list[str]] | None = None,
+    skip: bool = False,
+) -> Iterator[OpResult | None]:
+    """Run ``cloud_gate`` and always release the hold.
+
+    Yields a refuse :class:`OpResult` when the run must stop, or ``None`` when
+    it may proceed. Pass ``skip=True`` for dry-runs that must not reserve.
+    """
+    if skip:
+        yield None
+        return
+    blocked, hold_id = cloud_gate(
+        cfg, command, locales=locales, namespaces=namespaces, keys=keys,
+        batch_size=batch_size, take_hold=take_hold, texts_by_locale=texts_by_locale,
+    )
+    try:
+        yield blocked
+    finally:
+        release_cloud_hold(cfg, hold_id)
 
 
 def _existing_texts(

@@ -90,13 +90,32 @@ def test_skill_install_and_check(tmp_path, make_config) -> None:
     skill = tmp_path / ".claude" / "skills" / "llm-localizator" / "SKILL.md"
     text = skill.read_text(encoding="utf-8")
     assert text.startswith("---\nname: llm-localizator\n")
-    assert guide_text("agent") in text and text == skill_text()
+    assert text == skill_text()
     assert op_skill(cfg, "check").exit_code == 0
     skill.write_text(text + "\nlocal edit\n", encoding="utf-8")
     assert op_skill(cfg, "check").data["state"] == "outdated"
     skill.write_text("my own skill\n", encoding="utf-8")
     assert op_skill(cfg, "install").exit_code == 1
     assert op_skill(cfg, "install", force=True).ok
+
+
+def test_skill_set_is_installed_and_each_skill_is_short(tmp_path, make_config) -> None:
+    from llm_localizator.ops.skill import skill_names
+
+    names = skill_names()
+    assert names[0] == "llm-localizator"
+    assert {"l10n-wire-strings", "l10n-add-language", "l10n-review", "l10n-release"} <= set(names)
+    cfg = make_config(tmp_path)
+    out = op_skill(cfg, "install")
+    assert out.ok and [r["name"] for r in out.data["skills"]] == names
+    for name in names:
+        text = (tmp_path / ".claude" / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
+        assert text.startswith(f"---\nname: {name}\ndescription: "), name
+        # Short on purpose (ADR-162): the full guide stays in `help agent`.
+        assert len(text.splitlines()) < 90, f"{name} grew past a quick-load skill"
+    core = skill_text("llm-localizator")
+    for name in names[1:]:
+        assert f"`{name}`" in core, f"core skill does not point to {name}"
 
 
 @pytest.mark.parametrize("name", GUIDES)

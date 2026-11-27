@@ -27,6 +27,13 @@ def bundle_payload(
     loc = (locale or "").strip()
     if not loc:
         return {"ok": False, "error": "locale is required"}
+    allowed = {cfg.source_locale, *(getattr(cfg, "targets", None) or [])}
+    if loc not in allowed:
+        return {"ok": False, "error": f"unknown locale {loc!r}"}
+    if namespace and namespace not in set(build_catalog(
+        cfg.catalog_format, cfg.root, cfg.catalog_path, cfg.source_locale,
+    ).namespaces()):
+        return {"ok": False, "error": f"unknown namespace {namespace!r}"}
     catalog = build_catalog(
         cfg.catalog_format, cfg.root, cfg.catalog_path, cfg.source_locale,
     )

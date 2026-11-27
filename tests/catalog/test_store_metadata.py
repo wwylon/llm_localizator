@@ -36,3 +36,13 @@ def test_fully_translated_listing_is_quiet(tmp_path: Path) -> None:
 def test_no_fastlane_folder(tmp_path: Path) -> None:
     _write(tmp_path / "src" / "app.py")
     assert store_metadata_gaps(tmp_path, "en") == []
+
+
+def test_expect_locales_reports_absent_folders(tmp_path: Path) -> None:
+    meta = tmp_path / "fastlane" / "metadata" / "android"
+    for loc in ("en-US", "de-DE"):
+        _write(meta / loc / "full_description.txt")
+    gaps = store_metadata_gaps(tmp_path, "en", expect_locales=["de", "pl", "fr"])
+    assert len(gaps) == 1
+    assert gaps[0].absent_locales == ["pl", "fr"]
+    assert gaps[0].missing == {}

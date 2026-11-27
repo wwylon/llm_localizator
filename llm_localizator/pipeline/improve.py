@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 from datetime import datetime, timedelta, timezone
 
 from ._shared import WorkItem, _item_context, _item_glossary
@@ -130,6 +131,7 @@ def collect_improve_keys(
     When ``return_skipped=True``, also return how many cooldown-filtered keys
     would have been eligible without the cooldown.
     """
+    _bt_cuts: dict[str, float] = {}
     lqs_cut = improve_score_cut(cfg, scorer="lqs")
     flagged = _load_flagged(cfg)
     candidates: list[tuple[str, str, str, str, float]] = []
@@ -161,13 +163,18 @@ def collect_improve_keys(
                     cooldown_hours=cooldown_h,
                 )
                 score_entry = scores.get(locale, ns, key) or {}
-                parsed = quality_score_of(score_entry if isinstance(score_entry, dict) else None)
+                if not isinstance(score_entry, dict):
+                    score_entry = {}
+                parsed = quality_score_of(score_entry or None)
                 score = 1.0 if parsed is None else parsed
                 status = entry.get("status")
                 is_flagged = sk in flagged.get(locale, set())
-                cut = lqs_cut if score_entry.get("scorer") == "lqs" else improve_score_cut(
-                    cfg, scorer="bt", locale=locale,
-                )
+                if score_entry.get("scorer") == "lqs":
+                    cut = lqs_cut
+                else:
+                    cut = _bt_cuts.get(locale)
+                    if cut is None:
+                        cut = _bt_cuts[locale] = improve_score_cut(cfg, scorer="bt", locale=locale)
                 needs = status == "needs_better_model" or is_flagged or score < cut
                 if not needs:
                     continue
@@ -202,12 +209,16 @@ def parse_named_keys(
         return []
     known = set(namespaces or [])
     out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for item in raw:
         for part in str(item).split(","):
             part = part.strip()
             if not part:
                 continue
-            out.append(split_operator_key(part, known))
+            pair = split_operator_key(part, known)
+            if pair not in seen:
+                seen.add(pair)
+                out.append(pair)
     return out
 
 
@@ -350,6 +361,10 @@ def run_improve(
     register = getattr(cfg, "register", "informal")
 
     with project_mutation_lock(cfg):
+        blocked = flush_block_message(cfg.state_root())
+        if blocked:
+            report(blocked)
+            return ImproveResult(failed=1, details=[blocked])
         # Keys were collected before the lock; another process may have locked
         # or verified them since. State reads are mtime-cached, so this is fresh.
         work = [
@@ -493,7 +508,6 @@ def _generate_candidates(
         spec = get_standard(cfg.catalog_standard)
         payload.native_standard = True
         payload.preserve_tokens = tuple(sorted(spec.tokens(en)))
-    max_chars = notes.max_chars(ns, key)
 
     # Best-of-N: the improve loop already pays for a stronger model, so a
     # few independent samples (higher temperature past the first) scored
@@ -589,6 +603,7 @@ def _score_candidates(
                     locale, ns, key,
                     score=baseline, signals=prev_quality.signals, text=prev,
                     dimensions=prev_quality.dimensions, scorer=prev_quality.scorer,
+                    issues=prev_quality.issues,
                 )
                 dirty_score_locales.add(locale)
 
@@ -653,131 +668,163 @@ def _run_improve_locked(
         run_id=run_ctx.flush_run_id,
     )
 
-    for idx, (locale, ns, key, en, old_score) in enumerate(work, start=1):
-        register, style_notes = cfg.style_for(locale, cfg.model_for(locale))
-        language = language_name(locale)
-        # Same per-key glossary as translate: domain terms for this namespace
-        # and key, shared glossaries merged by the configured conflict rule.
-        item = WorkItem(namespace=ns, locale=locale, key=key, source=en)
-        item_glossary = _item_glossary(cfg, notes, item) if cfg.glossary_path else glossary
-        glossary_block = glossary_prompt_block(
-            item_glossary, locale, language, sources=[en],
-        )
-        existing = catalog.load(locale, ns)
-        prev = existing.get(key, "")
-        is_flagged = state_key(ns, key) in flagged.get(locale, set())
-        label = f"{locale}/{ns}.{key}"
-        progress = progress_line(idx, total, label)
-        report(progress)
-        report_metric(done=idx, total=total)
-        payload, raw_candidates, last_error, saw_invalid = _generate_candidates(
-            cfg, provider, notes, item_glossary, examples_by_locale, improve_model, n_samples, report,
-            locale=locale, ns=ns, key=key, en=en, language=language,
-            glossary_block=glossary_block, register=register, style_notes=style_notes,
-            label=label,
-        )
-        max_chars = payload.max_chars
+    ctx = _ImproveCtx(
+        cfg=cfg, catalog=catalog, provider=provider, scorer=scorer or provider,
+        result=result, glossary=glossary, examples_by_locale=examples_by_locale,
+        notes=notes, state=state, history=history, scores=scores, tm=tm,
+        improve_model=improve_model, n_samples=n_samples, back_translate=back_translate,
+        flagged=flagged, pending=pending, total=total, report=report, fl=fl,
+    )
+    for idx, row in enumerate(work, start=1):
+        _improve_one(ctx, idx, row)
+    _finish_improve(ctx, manifest)
+    return result
 
-        if not raw_candidates:
-            report(
-                f"  {progress} FAIL {locale}/{ns}.{key}: "
-                f"{last_error or 'no valid candidate'}"
-            )
-            result.failed += 1
-            trigger = (
-                "improve-error"
-                if last_error is not None and not saw_invalid
-                else "improve-fail"
-            )
-            fl.pending_history.append((locale, make_history_event(
-                namespace=ns, key=key, prev=prev, next_text=prev or "",
-                model=improve_model, status="machine",
-                src_sha=src_hash(en), trigger=trigger,
-                quality_score=old_score,
-                provider=cfg.provider_kind_for(locale),
-            )))
-            fl.tick()
-            continue
 
-        candidate, quality, baseline, baseline_dims = _score_candidates(
-            cfg, scorer or provider, scores, item_glossary, report, fl.dirty_score_locales, back_translate,
-            locale=locale, ns=ns, key=key, en=en, old_score=old_score, prev=prev,
-            language=language, max_chars=max_chars, payload=payload,
-            raw_candidates=raw_candidates, label=label,
-        )
+@dataclass
+class _ImproveCtx:
+    """Run-wide inputs for :func:`_improve_one`."""
+    cfg: Any
+    catalog: Any
+    provider: Any
+    scorer: Any
+    result: Any
+    glossary: Any
+    examples_by_locale: Any
+    notes: Any
+    state: Any
+    history: Any
+    scores: Any
+    tm: Any
+    improve_model: Any
+    n_samples: int
+    back_translate: Any
+    flagged: Any
+    pending: Any
+    total: int
+    report: Any
+    fl: Any
 
-        decision = decide_accept(cfg, locale, quality, baseline, baseline_dims, is_flagged=is_flagged)
-        if decision == "keep":
-            report(
-                f"  {progress} KEEP {locale}/{ns}.{key}: new {quality.score:.2f} not better than "
-                f"baseline {baseline:.2f} (stored {old_score:.2f})"
-            )
-            result.kept_previous += 1
-            fl.pending_history.append((locale, make_history_event(
-                namespace=ns, key=key, prev=prev, next_text=prev,
-                model=improve_model, status="machine",
-                src_sha=src_hash(en), trigger="improve-reject",
-                quality_score=baseline,
-                provider=cfg.provider_kind_for(locale),
-            )))
-            fl.dirty_score_locales.add(locale)
-            fl.tick()
-            continue
-        if decision == "flagged":
-            report(
-                f"  {progress} IMPROVED {locale}/{ns}.{key}: flagged accept "
-                f"{quality.score:.2f} (baseline {baseline:.2f}, stored {old_score:.2f})"
-            )
-        else:
-            report(
-                f"  {progress} IMPROVED {locale}/{ns}.{key}: "
-                f"{baseline:.2f} -> {quality.score:.2f} "
-                f"(stored was {old_score:.2f})"
-            )
 
-        fresh = catalog.load(locale, ns).get(key, "")
-        if prev and fresh != prev and key not in pending.get((ns, locale), {}):
-            report(
-                f"  {progress} SKIP {locale}/{ns}.{key}: "
-                "target was edited outside the run; run adopt to keep it"
-            )
-            result.skipped_external_edit += 1
-            result.skipped_external_keys.append((locale, ns, key))
-            fl.tick()
-            continue
-        fl.queue_write(ns, locale, key, candidate, prev if isinstance(prev, str) else None)
-        record_candidate(
-            state=state, scores=scores, history=history,
-            locale=locale, namespace=ns, key=key, source=en, previous=prev,
-            text=candidate, model=improve_model, quality_score=quality.score,
-            quality_signals=quality.signals, trigger="improve",
+def _improve_one(ctx: _ImproveCtx, idx: int, row) -> str:
+    """Generate, score and decide one key. Returns fail | keep | skip | improved."""
+    locale, ns, key, en, old_score = row
+    cfg, report, fl, result = ctx.cfg, ctx.report, ctx.fl, ctx.result
+    # Model-keyed prompt extras must match the model that writes candidates.
+    register, style_notes = cfg.style_for(locale, ctx.improve_model or cfg.model_for(locale))
+    language = language_name(locale)
+    # Same per-key glossary as translate: domain terms for this namespace
+    # and key, shared glossaries merged by the configured conflict rule.
+    item = WorkItem(namespace=ns, locale=locale, key=key, source=en)
+    item_glossary = _item_glossary(cfg, ctx.notes, item) if cfg.glossary_path else ctx.glossary
+    glossary_block = glossary_prompt_block(item_glossary, locale, language, sources=[en])
+    prev = ctx.catalog.load(locale, ns).get(key, "")
+    is_flagged = state_key(ns, key) in ctx.flagged.get(locale, set())
+    label = f"{locale}/{ns}.{key}"
+    progress = progress_line(idx, ctx.total, label)
+    report(progress)
+    report_metric(done=idx, total=ctx.total)
+    payload, raw_candidates, last_error, saw_invalid = _generate_candidates(
+        cfg, ctx.provider, ctx.notes, item_glossary, ctx.examples_by_locale, ctx.improve_model,
+        ctx.n_samples, report,
+        locale=locale, ns=ns, key=key, en=en, language=language,
+        glossary_block=glossary_block, register=register, style_notes=style_notes,
+        label=label,
+    )
+
+    def history_event(next_text: str, trigger: str, score: float):
+        return (locale, make_history_event(
+            namespace=ns, key=key, prev=prev, next_text=next_text,
+            model=ctx.improve_model, status="machine",
+            src_sha=src_hash(en), trigger=trigger,
+            quality_score=score,
             provider=cfg.provider_kind_for(locale),
-            dimensions=quality.dimensions, scorer=quality.scorer,
-            pending_history=fl.pending_history,
-            **notes.stale_args(ns, key),
-        )
-        fl.dirty_score_locales.add(locale)
-        context = _item_context(notes, None, item)
-        tm_args = dict(
-            locale=locale, source=en, text=candidate, model=improve_model,
-            context=context, provider=cfg.provider_kind_for(locale),
-            quality_score=quality.score,
-        )
-        fl.pending_tm.append(((locale, ns, key), functools.partial(tm.record, **tm_args)))
-        result.improved += 1
-        result.details.append(
-            f"{locale}/{ns}.{key}: {baseline:.2f} -> {quality.score:.2f}"
-        )
-        if is_flagged:
-            fl.pending_flag_resolves.append((locale, ns, key))
-        fl.tick()
+        ))
 
+    if not raw_candidates:
+        report(f"  {progress} FAIL {label}: {last_error or 'no valid candidate'}")
+        result.failed += 1
+        trigger = "improve-error" if last_error is not None and not saw_invalid else "improve-fail"
+        fl.pending_history.append(history_event(prev or "", trigger, old_score))
+        fl.tick()
+        return "fail"
+
+    candidate, quality, baseline, baseline_dims = _score_candidates(
+        cfg, ctx.scorer, ctx.scores, item_glossary, report, fl.dirty_score_locales,
+        ctx.back_translate,
+        locale=locale, ns=ns, key=key, en=en, old_score=old_score, prev=prev,
+        language=language, max_chars=payload.max_chars, payload=payload,
+        raw_candidates=raw_candidates, label=label,
+    )
+    decision = decide_accept(cfg, locale, quality, baseline, baseline_dims, is_flagged=is_flagged)
+    if decision == "keep":
+        report(
+            f"  {progress} KEEP {label}: new {quality.score:.2f} not better than "
+            f"baseline {baseline:.2f} (stored {old_score:.2f})"
+        )
+        result.kept_previous += 1
+        fl.pending_history.append(history_event(prev, "improve-reject", baseline))
+        fl.dirty_score_locales.add(locale)
+        fl.tick()
+        return "keep"
+    if decision == "flagged":
+        report(
+            f"  {progress} IMPROVED {label}: flagged accept "
+            f"{quality.score:.2f} (baseline {baseline:.2f}, stored {old_score:.2f})"
+        )
+    else:
+        report(
+            f"  {progress} IMPROVED {label}: "
+            f"{baseline:.2f} -> {quality.score:.2f} "
+            f"(stored was {old_score:.2f})"
+        )
+
+    fresh = ctx.catalog.load(locale, ns).get(key, "")
+    if prev and fresh != prev and key not in ctx.pending.get((ns, locale), {}):
+        report(f"  {progress} SKIP {label}: target was edited outside the run; run adopt to keep it")
+        result.skipped_external_edit += 1
+        result.skipped_external_keys.append((locale, ns, key))
+        fl.tick()
+        return "skip"
+    fl.queue_write(ns, locale, key, candidate, prev if isinstance(prev, str) else None)
+    record_candidate(
+        state=ctx.state, scores=ctx.scores, history=ctx.history,
+        locale=locale, namespace=ns, key=key, source=en, previous=prev,
+        text=candidate, model=ctx.improve_model, quality_score=quality.score,
+        quality_signals=quality.signals, trigger="improve",
+        provider=cfg.provider_kind_for(locale),
+        dimensions=quality.dimensions, scorer=quality.scorer,
+        issues=quality.issues,
+        pending_history=fl.pending_history,
+        **ctx.notes.stale_args(ns, key),
+    )
+    fl.dirty_score_locales.add(locale)
+    tm_args = dict(
+        locale=locale, source=en, text=candidate, model=ctx.improve_model,
+        context=_item_context(ctx.notes, None, item), provider=cfg.provider_kind_for(locale),
+        quality_score=quality.score,
+    )
+    fl.pending_tm.append(((locale, ns, key), functools.partial(ctx.tm.record, **tm_args)))
+    result.improved += 1
+    result.details.append(f"{label}: {baseline:.2f} -> {quality.score:.2f}")
+    if is_flagged:
+        fl.pending_flag_resolves.append((locale, ns, key))
+    fl.tick()
+    return "improved"
+
+
+def _finish_improve(ctx: _ImproveCtx, manifest) -> None:
+    """Final flush, tally (minus keys skipped at flush) and run manifest."""
+    fl, result, report, total = ctx.fl, ctx.result, ctx.report, ctx.total
     if fl.has_work():
         fl.flush()
     if fl.skipped_external_at_flush:
         result.skipped_external_edit += fl.skipped_external_at_flush
         result.skipped_external_keys.extend(fl.skipped_external_keys)
         result.improved = max(0, result.improved - fl.skipped_external_at_flush)
+        # Keys dropped at flush were never written: do not list them as improved.
+        dropped = {f"{loc}/{ns}.{key}: " for loc, ns, key in fl.skipped_external_keys}
+        result.details = [d for d in result.details if not any(d.startswith(p) for p in dropped)]
 
     skip_part = (
         f", {result.skipped_recent} cooling from prior KEEP/FAIL"
@@ -801,8 +848,7 @@ def _run_improve_locked(
             skipped_recent=result.skipped_recent,
             skipped_external_edit=result.skipped_external_edit,
         )
-        manifest.write(cfg.state_root())
+        manifest.write(ctx.cfg.state_root())
         report_run_summary(manifest)
     except OSError:
         pass
-    return result

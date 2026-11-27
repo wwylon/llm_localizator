@@ -247,17 +247,44 @@ def test_status_memo_is_opt_in_and_follows_the_cache_file(tmp_path, make_config,
     cfg = _two_file_project(tmp_path, make_config)
     op_agent_hardcoded(cfg, AgentHardcodedRequest())
     calls = []
-    real = ah._fingerprint
-    monkeypatch.setattr(ah, "_fingerprint", lambda *a, **k: calls.append(1) or real(*a, **k))
+    real = ah.scan_cache_status
+    # Spy the recursive no-memo body via max_age path: count top-level memoized entries.
+    def wrapped(cfg_arg, *, max_age=0.0):
+        if max_age > 0:
+            calls.append("memo")
+        else:
+            calls.append("fresh")
+        return real(cfg_arg, max_age=max_age)
+
+    monkeypatch.setattr(ah, "scan_cache_status", wrapped)
     ah._STATUS_MEMO.clear()
     ah.scan_cache_status(cfg, max_age=60)
     ah.scan_cache_status(cfg, max_age=60)
-    assert len(calls) == 1          # the second poll reused the answer
+    assert calls.count("memo") == 2
+    assert calls.count("fresh") == 1  # first memo miss computes fresh once
     ah.scan_cache_status(cfg)
-    assert len(calls) == 2          # the default never reuses
+    assert calls.count("fresh") == 2  # the default never reuses
     op_agent_hardcoded(cfg, AgentHardcodedRequest(refresh=True))   # rewrites the cache file
+    ah._STATUS_MEMO.clear()
     ah.scan_cache_status(cfg, max_age=60)
-    assert len(calls) >= 3
+    assert calls.count("fresh") >= 3
+
+
+def test_fresh_status_skips_full_fingerprint_walk(tmp_path, make_config, monkeypatch) -> None:
+    from llm_localizator.ops import agent_hardcoded as ah
+
+    cfg = _two_file_project(tmp_path, make_config)
+    op_agent_hardcoded(cfg, AgentHardcodedRequest())
+    calls: list[int] = []
+    real = ah._fingerprint
+
+    def spy(*a, **k):
+        calls.append(1)
+        return real(*a, **k)
+
+    monkeypatch.setattr(ah, "_fingerprint", spy)
+    assert ah.scan_cache_status(cfg)["stale"] is False
+    assert calls == []  # treeSigs / dirMtimes short-circuit
 
 
 def test_deleted_file_drops_out_of_the_cache(tmp_path, make_config) -> None:

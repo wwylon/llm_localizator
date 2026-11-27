@@ -6,12 +6,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
+### Added
+
+- `report`: one read-only localization page (Markdown, self-contained HTML or JSON) that gathers status, validate, check-keys, the hardcoded scan, review risk, drafts, budget and recent runs, with a verdict: NO-GO (exit 1), GO with notes, or GO. Also `POST /api/ops/report`, which never writes a file.
+- `normalize`: applies the output normalizer (wrapper quotes, `...` versus `…`) to values written earlier or by hand. It reports by default; `--write` applies, records history and keeps each key's status. Also `POST /api/ops/normalize`.
+- `skill install` writes five short task skills for consumer repos (core rules, wiring strings, adding a language, review, release) instead of one long guide.
+- Every operation result carries `schema_version`; [docs/agent-contract.md](docs/agent-contract.md) lists the stable fields, safe versus ask-first commands and web role refusals (exit 77).
+- `review-risk`, `glossary-learn` and `cycle` are available as web operations.
+- Translation issues in a rubric style (LQS), the Hy-MT3 engine, and a layout-overlap check; measured pixel budgets (V29) and an agent checklist.
+- Docs: concepts, troubleshooting, adding to an existing project, cost and budget, exit codes.
+
+### Changed
+
+- `translate` and related commands run locally when taskqueue is not installed, instead of failing.
+- `agent-backlog` covers active target locales by default; name a frozen locale in `--locales` to include it.
+- `run_translation`, improve and blueprint generation split into small named steps; faster translate and improve runs through targeted cache invalidation.
+- Web export takes the same options as the CLI (`xliff_version`, `bom`, `approved_only`).
+- Hardcoded-string scanner v71; ruff covers tests and scripts; test coverage gate at 80%.
+
+### Fixed
+
+- Scoring fails a chat answer about the translation ("The translation of X is Y") and leaked prompt text, which back-translation used to score 1.0.
+- A partly failed cloud batch keeps and bills the finished results and retries only the failed keys.
+- Web: link schemes in the editor are allow-listed (XSS); path-like locales are rejected; `/api/bundle` serves only known locales and namespaces; a stale session token is refreshed once; streamed output is flushed at the end.
+- Web UI keys that were missing from the catalogue, and leaked prompt text and stray quotes in the ar/de UI translations.
+- `report` treats a stale pseudo-locale as a note instead of NO-GO.
+- Improve uses the improve model's style notes, not the translate model's.
+
 ## [0.2.1] - 2026-11-22
 
 ### Fixed
 
 - Public docs no longer point at private `experiments/quality_bakeoff/` paths or
-  `devkit/`; model evaluation uses `llm-localizator bakeoff` only (#8, #9).
+  internal tooling; model evaluation uses `llm-localizator bakeoff` only (#8, #9).
 - Homepage and `engine fetch` default URL use GitHub Pages
   (`https://wwylon.github.io/llm_localizator/`) until `llm-localizator.dev` DNS
   exists (#7).
@@ -40,7 +69,7 @@ All notable changes to this project are documented here. The format follows
 
 - Hardcoded-string scanner v58 to v69: Python desktop GUI text (Tk, Qt, Flet, Slicer-style Qt modules, messages and formatted f-strings), Java widgets, enum labels, status and output-pane helpers and display-name returns, Dart text constants, Jinja macro captions, mkdocs and JSON screen files, AppStream store text. Regex patterns and `{"en": {...}, "fa": {...}}` language catalogues are no longer reported. On a fresh held-out round the last measured figures were recall 0.61 and precision 0.77 (pool L, v67).
 - Published scanner numbers now come from the seven latest held-out rounds (pools F to L, 136 projects, scanner v57 to v67): macro precision 0.74, macro recall 0.59. They replace the earlier 12-project round (0.91 / 0.34).
-- Shipped files no longer mention devkit.
+- Shipped files no longer reference private internal tooling.
 - ERB (Rails views) joins the supported scanner tier (held-out rounds A to I: 5 projects at the bar, 2 below). Scanner v59.
 - Python desktop GUIs (Tk, Qt, wx, Kivy, Toga): widget captions, menu entries, window titles and tooltips are found. Dart text constants are found. One file that breaks the scanner is listed as skipped instead of stopping the scan (v58).
 - `doctor` reports an unreachable Ollama as a warning (exit 0); `doctor --strict` makes it fail.

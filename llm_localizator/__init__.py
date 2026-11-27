@@ -10,4 +10,4 @@ filesystem access, no network. Terminal setup happens in ``llm_localizator.cli``
 
 from __future__ import annotations
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"

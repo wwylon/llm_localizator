@@ -14,6 +14,7 @@ from ..core.icu import needs_icu_decomposition
 from ..core.quality import DEFAULT_SCORE_THRESHOLD, sample_consistency
 from ..core.standards import get_standard, uses_icu
 from ..providers import CompletionRequest, ProviderError
+from ..providers.batch import PartialBatchError
 from ..reporting import log_heartbeat, report as queue_report
 from .prompts import (
     BATCH_SCHEMA,
@@ -161,6 +162,12 @@ def translate_cloud_async_batches(
         ):
             texts = provider.complete_many(requests)
         _bill_cloud(cfg, provider, locale, model)
+    except PartialBatchError as exc:
+        # Succeeded items were paid for: bill the batch and keep them; failed
+        # jobs come back as all-None and are retried like any failed key.
+        report(f"    WARN: cloud async batch partly failed: {exc}")
+        _bill_cloud(cfg, provider, locale, model)
+        texts = list(exc.results)
     except ProviderError as exc:
         report(f"    WARN: cloud async batch error: {exc}")
         return [[None] * len(job["payloads"]) for job in jobs]
@@ -168,6 +175,17 @@ def translate_cloud_async_batches(
     out: list[list[str | None]] = []
     for job, raw in zip(jobs, texts):
         payloads = job["payloads"]
+        if raw is None:  # this job failed inside a partly-failed batch
+            report("    Batch item failed -- retrying its keys one by one.")
+            out.append(_translate_singles(
+                provider, payloads, language, locale, model, cfg,
+                job["glossary_block"], register, report,
+                glossary=job.get("glossary"),
+                n_samples=int(job.get("n_samples") or 1),
+                threshold=float(job.get("threshold") or DEFAULT_SCORE_THRESHOLD),
+                llm_score=bool(job.get("llm_score", True)),
+            ))
+            continue
         results = _parse_batch(raw, len(payloads))
         sources = [p.source for p in payloads]
         results = reject_duplicate_batch_outputs(sources, results)

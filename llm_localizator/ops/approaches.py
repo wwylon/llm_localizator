@@ -49,7 +49,7 @@ APPROACHES: tuple[Approach, ...] = (
     ),
     Approach(
         "cloud", "Cloud model with a spending cap",
-        words="Anthropic, OpenAI or DeepL under [budget] monthly_usd (ADR-35)",
+        words="Anthropic, OpenAI, DeepSeek or DeepL under [budget] monthly_usd (ADR-35)",
         needs="an API key in the environment and a [budget] ceiling",
         cost="paid; fast",
         stamp="machine",

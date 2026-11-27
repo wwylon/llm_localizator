@@ -31,6 +31,11 @@ KNOWN_LAYOUTS: list[tuple[str, str, str | None, str]] = [
     # Android
     ("android-xml", "app/src/main/res/values-{locale}/{namespace}.xml", None, "*.xml"),
     ("android-xml", "res/values-{locale}/{namespace}.xml", None, "*.xml"),
+    # Chrome / WebExtension
+    ("chrome-messages", "_locales/{locale}/messages.json", None, "messages.json"),
+    # Qt Linguist
+    ("qt-ts", "translations/app_{locale}.ts", None, "*.ts"),
+    ("qt-ts", "i18n/{namespace}_{locale}.ts", None, "*.ts"),
 ]
 
 
@@ -188,6 +193,18 @@ def _search_layout(root: Path, source_locale: str) -> tuple[str, str, str | None
             key = (-siblings, depth, prefix)
             if best is None or key < best[0]:
                 best = (key, (fmt, prefix + template))
+        chrome = _chrome_candidate(here, dirnames, source_locale)
+        if chrome:
+            siblings, template = chrome
+            key = (-siblings, depth, prefix)
+            if best is None or key < best[0]:
+                best = (key, ("chrome-messages", prefix + template))
+        qt = _qt_ts_candidate(here, filenames, source_locale)
+        if qt:
+            siblings, template = qt
+            key = (-siblings, depth, prefix)
+            if best is None or key < best[0]:
+                best = (key, ("qt-ts", prefix + template))
         if source_locale in dirnames:
             lc = here / source_locale / "LC_MESSAGES"
             if lc.is_dir() and any(lc.glob("*.po")):
@@ -199,6 +216,60 @@ def _search_layout(root: Path, source_locale: str) -> tuple[str, str, str | None
         return None
     fmt, template = best[1]
     return fmt, template, None
+
+
+def _chrome_candidate(here: Path, dirnames: list[str], source_locale: str):
+    """``_locales/<locale>/messages.json`` (or any folder of locale dirs with that file)."""
+    src = None
+    for name in (source_locale, source_locale.replace("-", "_")):
+        if name in dirnames and (here / name / "messages.json").is_file():
+            src = name
+            break
+    if src is None:
+        return None
+    siblings = sum(
+        1 for d in dirnames
+        if d != src and _LOCALE_STEM.match(d) and (here / d / "messages.json").is_file()
+    )
+    if siblings < 1 and here.name != "_locales":
+        return None
+    return max(siblings, 1), "{locale}/messages.json"
+
+
+def _qt_ts_candidate(here: Path, filenames: list[str], source_locale: str):
+    """``app_en.ts`` / ``app_pl.ts`` siblings, or ``foo_en.ts`` with a ``{namespace}_{locale}`` stem."""
+    loc = source_locale.replace("-", "_")
+    suffix = f"_{loc}.ts"
+    matches = [f for f in filenames if f.endswith(suffix)]
+    if not matches:
+        return None
+    stem = matches[0][: -len(suffix)]  # e.g. "app" or "ui"
+    siblings = sum(
+        1 for f in filenames
+        if f.startswith(stem + "_") and f.endswith(".ts") and f != matches[0]
+        and _LOCALE_STEM.match(f[len(stem) + 1 : -3])
+    )
+    if siblings < 1:
+        return None
+    return siblings, f"{stem}_{{locale}}.ts"
+
+
+def fluent_paths(root: Path, *, limit: int = 20) -> list[str]:
+    """Relative ``.ftl`` paths under *root* (Fluent has no catalogue adapter yet)."""
+    out: list[str] = []
+    seen = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d.lower() not in _SKIP_DIRS and not d.startswith("."))
+        seen += len(filenames)
+        if seen > _WALK_LIMIT:
+            break
+        for name in filenames:
+            if name.endswith(".ftl"):
+                rel = (Path(dirpath) / name).relative_to(root).as_posix()
+                out.append(rel)
+                if len(out) >= limit:
+                    return out
+    return out
 
 
 def _json_candidate(here: Path, filenames: list[str], source_locale: str):

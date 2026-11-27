@@ -100,7 +100,7 @@ Override with `[visual] findings_path` in `.llm-localize.toml`.
 
 ### Reasons
 
-`layout_overflow` · `layout_clip` · `layout_heuristic` · `en_leak` · `icu_leak` · `glossary` · `other`
+`layout_overflow` · `layout_clip` · `layout_heuristic` · `layout_overlap` · `en_leak` · `icu_leak` · `glossary` · `other`
 
 ### Key binding (consumer priority)
 
@@ -119,10 +119,17 @@ For layout checks that need no consumer harness, a `[qa]` block lets the engine
 crawl the app itself (ADR-119). Every layout locale gets a full-page screenshot
 per page in `~/.llm_localize/data/<name>/qa/<ts>/<locale>/`. `layout.json` lists
 the text elements that are clipped (`scrollWidth > clientWidth` with overflow
-hidden or an ellipsis) or outside the viewport, and flags a page whose `dir`
-does not match the locale (rtl for ar/he/fa/ur). This covers RTL overflow and CJK
-layout. Visual findings JSONL (below) remains the format for judged,
-screenshot-backed defects a consumer's own harness produces.
+hidden or an ellipsis), outside the viewport, or overlapping another visible
+text box (bounding-box intersection confirmed with `elementsFromPoint`), and
+flags a page whose `dir` does not match the locale (rtl for ar/he/fa/ur). This
+covers RTL overflow, CJK layout, and TiMi-style overlap. Map crawl `overlap`
+issues to visual-findings reason `layout_overlap` when filing JSONL. Catalogue
+keys with `data-i18n` / `data-llm-key` also feed **layout budgets**
+(`~/.llm_localize/data/<project>/layout_budgets/<source_locale>.json`);
+`validate --check-layout` then warns with **V29** when a translation is
+estimated wider than the measured box (ADR-159). Visual findings JSONL (below)
+remains the format for judged, screenshot-backed defects a consumer's own
+harness produces.
 
 ## Python / Playwright note
 

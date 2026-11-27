@@ -2509,5 +2509,11 @@
   "gl_export_failed": "échec de l'export",
   "gl_import_failed": "échec de l'importation",
   "gl_save_failed": "échec de l'enregistrement",
-  "tm_export_failed": "Échec de l'export"
+  "tm_export_failed": "Échec de l'export",
+  "hc_load_more": "Charger plus",
+  "setup_step_approach": "Mode de traduction",
+  "setup_approach_title": "Comment traduire les textes ?",
+  "setup_approach_help": "Ceci enregistre l'approche [translate] dans la configuration du projet. Vous pourrez la modifier plus tard avec llm-localizator approach --set.",
+  "setup_approach_missing": "La liste des approches n'a pas pu être chargée.",
+  "setup_sum_approach": "Approche"
 }

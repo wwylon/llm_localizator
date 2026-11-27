@@ -99,6 +99,31 @@ def test_op_translate_prefers_queue_when_tq_available(project_root, make_config,
     assert not called[0][1]
 
 
+def test_op_translate_runs_locally_without_tq(project_root, make_config, monkeypatch) -> None:
+    """CLI-style submit=True must still translate in-process when tq is absent."""
+    from llm_localizator.ops.translate import op_translate
+    from llm_localizator.ops.types import TranslateRequest
+    from llm_localizator.pipeline.translate import TranslationResult
+
+    setup_project(project_root, {"a": "A"}, existing={"a": "B"})
+    cfg = make_config(project_root)
+    monkeypatch.setattr("llm_localizator.ops.translate.tq_available", lambda: False)
+
+    def fake_run(*_a, **_k):
+        return TranslationResult(total=1, written=1, rejected=[], skipped=[], dry_run=False)
+
+    monkeypatch.setattr("llm_localizator.ops.translate.run_translation", fake_run)
+
+    def boom_submit(*_a, **_k):
+        raise AssertionError("must not call tq when it is not on PATH")
+
+    monkeypatch.setattr("llm_localizator.ops.translate._submit", boom_submit)
+    out = op_translate(cfg, TranslateRequest(locales=["pl"], submit=True))
+    assert out.ok
+    assert out.data.get("submitted") is not True
+
+
+
 def test_op_translate_submits_below_min_keys(project_root, make_config, monkeypatch) -> None:
     """Operator translate must enqueue even when backlog is under min_keys."""
     from llm_localizator.ops.translate import op_translate

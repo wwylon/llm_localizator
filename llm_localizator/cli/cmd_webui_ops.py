@@ -38,13 +38,9 @@ __all__ = [
 
 
 def _print(result: OpResult, args: argparse.Namespace) -> int:
-    if getattr(args, "fmt", "text") == "json":
-        print(json.dumps(result.data, indent=2))
-    else:
-        print(result.summary)
-        for line in result.lines:
-            print(line)
-    return result.exit_code
+    from .output import print_result
+
+    return print_result(result, as_json=getattr(args, "fmt", "text") == "json")
 
 
 def run_suggest(args: argparse.Namespace) -> int:

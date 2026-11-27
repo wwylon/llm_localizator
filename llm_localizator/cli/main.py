@@ -95,6 +95,8 @@ _DIRECT_COMMANDS: dict[str, tuple[str, str]] = {
         "help": ("cmd_help", "run_help"),
         "set": ("cmd_help", "run_set"),
         "review-risk": ("cmd_help", "run_review_risk"),
+        "normalize": ("cmd_help", "run_normalize"),
+        "report": ("cmd_help", "run_report"),
         "cycle": ("cmd_help", "run_cycle"),
         "onboard": ("cmd_help", "run_onboard"),
         "context-propose": ("cmd_help", "run_context_propose"),

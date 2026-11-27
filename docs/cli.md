@@ -371,7 +371,7 @@ prompt` is paste-ready markdown for Cursor.
 
 | Flag | Purpose |
 |------|---------|
-| `--locales a,b` | Restrict (default: all targets, including frozen) |
+| `--locales a,b` | Restrict (default: active targets; name a frozen locale here to include it) |
 | `--namespace NAME` | Restrict to one namespace |
 | `--limit N` | Cap backlog size |
 | `--reasons LIST` | Comma-separated subset of `missing,empty,no_state,stale` |
@@ -1234,6 +1234,63 @@ llm-localizator cycle myproject --repair     # retranslate keys failing V03/V04/
 llm-localizator review-risk myproject --locale pl --limit 30 --format csv
 ```
 
+## `report`
+
+One shareable page on where localization stands (ADR-163), for people who don't run the
+CLI and for CI to attach to a pull request. It is read-only and writes nothing except
+`--out`.
+
+```bash
+llm-localizator report myapp                                  # Markdown to stdout
+llm-localizator report myapp --format html --out l10n.html    # one self-contained page
+llm-localizator report myapp --format json                    # the facts, for tooling
+```
+
+It contains coverage per locale ("has text", missing, out of date, not recorded), validation
+errors and warnings in active locales, the `check-keys` result, the last hardcoded scan,
+the riskiest keys to review, drafts waiting, cloud spend this month and recent runs.
+
+The verdict:
+- **NO-GO**: a key used in code is missing from the catalogue, or an active locale has
+  validation errors. Exit 1, so CI can gate on it.
+- **GO, with notes**: something a person should look at (warnings, risky keys, drafts,
+  hardcoded hits, unrecorded values, untranslated strings).
+- **GO**: none of the above.
+
+| Flag | Purpose |
+|------|---------|
+| `--format md\|html\|json` | Output format (default `md`) |
+| `--out FILE` | Write to a file instead of stdout |
+| `--locales a,b` | Restrict (default: active targets) |
+| `--review-limit N` | Risky keys listed per locale (default 5) |
+
+`cycle` is the operator's loop: it can queue translations and writes its own log in the
+data home. `report` is the read-only view to share.
+
+## `normalize`
+
+Apply the candidate normalizer to values already in the catalogue (ADR-161). New model output
+already goes through it; values written earlier or by hand can still carry wrapper quotes
+(`„Brakujące”`) or `...` where the source uses `…`.
+
+```bash
+llm-localizator normalize myapp                    # report what would change
+llm-localizator normalize myapp --write            # apply, keeping each key's status
+llm-localizator normalize myapp --steps case       # include an opt-in step
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--locales a,b` | Restrict (default: active targets) |
+| `--namespace NAME` | Restrict to a namespace (repeatable) |
+| `--write` | Apply the fixes. Without it the command only reports. |
+| `--steps LIST` | Default `quotes,icu_quotes,ellipsis,symbol,plural_fill`. Opt-in: `case`, `first_line` (they can undo a reviewer's deliberate choice). |
+| `--format text\|json` | Output format |
+
+Verified and locked keys are never changed. A value whose fix needs an opt-in step is
+counted and left alone, not half-fixed. Each write records a history event
+(`trigger=normalize`) and does not re-score the key.
+
 ## `set`
 
 Write one translation through the same gate as a model run (normalizer plus the
@@ -1248,9 +1305,11 @@ llm-localizator set myproject --locale pl --key app.title --text "Ustawienia" --
 ## `help` and `skill`
 
 The packaged guides (ADR-121): `help human` for operators, `help agent` for AI
-agents. `--path` prints the file path. `skill install` writes the agent guide into
-a project as `.claude/skills/llm-localizator/SKILL.md`, and `skill check` exits 1
-when it is missing, edited or outdated. Run `skill install` only with the
+agents. `--path` prints the file path. `skill install` writes the task skills into
+a project under `.claude/skills/` (`llm-localizator` for the rules, plus
+`l10n-wire-strings`, `l10n-add-language`, `l10n-review`, `l10n-release`; ADR-162), and
+`skill check` exits 1 when any of them is missing, edited or outdated. A skill file the
+tool did not write is left alone unless `--force`. Run `skill install` only with the
 project owner's agreement.
 
 ```bash

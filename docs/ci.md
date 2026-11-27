@@ -28,6 +28,22 @@ changed keys, and fails the check while strings still need translating. It never
 - [ci-templates/github-localization.yml](ci-templates/github-localization.yml)
 - [ci-templates/gitlab-localization.yml](ci-templates/gitlab-localization.yml)
 
+## Release report
+
+`llm-localizator report` writes one page with a go / no-go verdict, and exits 1 only on
+no-go. Attach it to the pull request or the release so reviewers who don't use the CLI can
+read it:
+
+```bash
+llm-localizator report --format html --out l10n-report.html
+llm-localizator report --format md --out l10n-report.md
+```
+
+In GitHub Actions, upload `l10n-report.html` as an artifact. The Markdown file also works
+as a job summary (`cat l10n-report.md >> "$GITHUB_STEP_SUMMARY"`). State lives in the
+data home by default, so a fresh runner reports every value as "not recorded". Use
+`data_home = "project"` if CI should see provenance ([exit-codes.md](exit-codes.md#in-ci)).
+
 ## pre-commit
 
 ```yaml

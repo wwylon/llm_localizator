@@ -54,6 +54,7 @@ def record_candidate(
     provider: str | None = None,
     dimensions: dict[str, float] | None = None,
     scorer: str | None = None,
+    issues: list[dict[str, str]] | None = None,
     candidates: list[dict] | None = None,
     pending_history: list[tuple[str, HistoryEvent]] | None = None,
     record_score: bool = True,
@@ -98,7 +99,7 @@ def record_candidate(
         scores.record(
             locale, namespace, key,
             score=quality_score, signals=quality_signals, text=text,
-            dimensions=dimensions, scorer=scorer,
+            dimensions=dimensions, scorer=scorer, issues=issues,
         )
     else:
         scores.forget(locale, namespace, key)

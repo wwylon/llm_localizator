@@ -711,6 +711,16 @@ class ProjectConfig:
                     names.append(d)
         return names or None
 
+    def glossary_cache(self):
+        """Shared glossary loader used by validate, draft, import and bulk edits."""
+        from .context import GlossaryCache
+
+        return GlossaryCache(
+            self.glossary_path,
+            shared=list(getattr(self, "glossary_shared", []) or []),
+            conflict=getattr(self, "glossary_conflict", "own"),
+        )
+
 
 from .config_load import load_config  # noqa: E402  — keep public API on this module
 

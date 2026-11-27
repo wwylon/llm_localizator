@@ -13,9 +13,7 @@
   }
 
   function t(key, fallback, vars) {
-    var loc = window.uiLocale;
-    var value = loc && loc.t ? loc.t(key) : key;
-    var text = value && value !== key ? value : fallback;
+    var text = (window.uiT || function (k, f) { return f != null ? f : k; })(key, fallback);
     Object.keys(vars || {}).forEach(function (name) {
       text = text.split("{" + name + "}").join(String(vars[name]));
     });
@@ -35,6 +33,7 @@
   function post(path, body) {
     body = body || {};
     body.project = project();
+    if (window.LLMApi && LLMApi.apiPost) return window.LLMApi.apiPost(path, body);
     return fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

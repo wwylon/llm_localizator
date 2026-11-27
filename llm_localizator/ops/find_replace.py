@@ -14,7 +14,7 @@ from ..catalog.state import is_locked, is_verified
 from ..core.standards import get_standard
 from ..core.validate import check_max_chars, validate_translation
 from ..pipeline.recording import provenance_stores, record_candidate
-from ..projects import ContextNotes, GlossaryCache, ProjectConfig
+from ..projects import ContextNotes, ProjectConfig
 from .types import FindReplaceRequest, OpResult
 
 __all__ = ["op_find_replace"]
@@ -52,10 +52,7 @@ def op_find_replace(cfg: ProjectConfig, req: FindReplaceRequest) -> OpResult:
     catalog = catalog_for(cfg)
     stores = provenance_stores(cfg)
     notes = ContextNotes(cfg.context_dir)
-    glossary_cache = GlossaryCache(
-        cfg.glossary_path, shared=list(getattr(cfg, "glossary_shared", []) or []),
-        conflict=getattr(cfg, "glossary_conflict", "own"),
-    )
+    glossary_cache = cfg.glossary_cache()
     standard = get_standard(getattr(cfg, "catalog_standard", None))
     rows: list[dict] = []
     for ns in cfg.namespaces_for(catalog):

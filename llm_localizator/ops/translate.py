@@ -155,14 +155,6 @@ def op_translate(
     ):
         return _submit(cfg, req)
 
-    if req.submit and not tq_available():
-        return OpResult(
-            ok=False,
-            exit_code=1,
-            command="translate",
-            summary="the 'tq' command is not on PATH. Install the taskqueue package.",
-        )
-
     catalog = catalog_for(cfg)
     if req.model:
         # A copy: the web server shares one config between requests, and one request's model choice must not

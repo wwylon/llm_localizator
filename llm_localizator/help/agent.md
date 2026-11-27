@@ -1,13 +1,14 @@
 # llm-localizator — guide for AI agents
 
-You are an AI agent working on an app that uses llm-localizator, a local-LLM
-localisation engine. This file is the single source of rules and recipes for
+You are an AI agent working on an app that uses llm-localizator, a
+localisation engine that translates with local or cloud LLMs. This file is the single source of rules and recipes for
 agents. The human operator's guide is `llm-localizator help human`.
 
-Print this file any time with `llm-localizator help agent`. MCP clients can read it as
-the resource `llm-localizator://help/agent`. The MCP tools `check_keys`,
-`hardcoded_status`, `list_approaches`, `localization_status`, `validate_catalogue`
-and `agent_backlog` wrap the commands below.
+Print this file any time with `llm-localizator help agent`. For a short ordered
+checklist only: `llm-localizator help agent --print-steps` (ADR-159). MCP clients
+can read it as the resource `llm-localizator://help/agent`. The MCP tools
+`check_keys`, `hardcoded_status`, `list_approaches`, `localization_status`,
+`validate_catalogue` and `agent_backlog` wrap the commands below.
 
 **Terms used in this guide:**
 - **Consumer repository**: the app being localized, not the llm-localizator engine.
@@ -19,6 +20,10 @@ and `agent_backlog` wrap the commands below.
 - **en-XX**: the QA marker locale. Every catalogued string is shown as `XXXX`, so
   readable English left on screen is hardcoded. It is **stale** when English
   strings were added or changed after it was generated.
+
+Machine-facing reference (JSON envelope with `schema_version`, exit codes, which commands
+are safe and which need a yes): `docs/agent-contract.md`. When a run fails, look the message
+up in `docs/troubleshooting.md`.
 
 ## 1. Hard rules
 
@@ -69,7 +74,7 @@ and `agent_backlog` wrap the commands below.
 | id | Who writes the words | Needs | Stamp written |
 |---|---|---|---|
 | `local` | Ollama models on this machine, run through taskqueue | Ollama (a GPU makes it practical), taskqueue | machine |
-| `cloud` | Anthropic, OpenAI or DeepL under [budget] monthly_usd (ADR-35) | an API key in the environment and a [budget] ceiling | machine |
+| `cloud` | Anthropic, OpenAI, DeepSeek or DeepL under [budget] monthly_usd (ADR-35) | an API key in the environment and a [budget] ceiling | machine |
 | `agent` | the AI agent in your editor fills the catalogues | an agent session (Claude Code or similar) | agent |
 | `human` | people, through an exported file or the web editor | translators; xlsx / xliff / csv round trip or `llm-localizator web` | human |
 | `hybrid` | a draft from local, cloud or agent, then reviewers fix what is risky | one of the above plus a reviewer | machine/agent, then human |
@@ -149,7 +154,7 @@ Apps that already use an i18n library (next-intl, i18next, gettext…) keep it.
 
 ## 4. The hardcoded-text loop
 
-Exit code 0 means clean, 1 means fix something, 2 means a configuration problem.
+Exit code 0 means clean, 1 means fix something, 64 means a usage or configuration problem.
 
 ```bash
 llm-localizator agent-hardcoded <project> --status   # what is left and the next steps (JSON)
@@ -177,8 +182,10 @@ for apps that ship the file themselves.
 - `dynamic_text.json`: the `literal: false` rows. They come from the server, an
   API or runtime string building. Find the producer (an API response, a server
   template) instead of looking for a JS literal. User data stays as it is.
-- `layout.json` and the `ar/`, `zh/` screenshots: wrong `dir`, clipped or
-  off-screen text. Look at the screenshots too; bidi problems are not measured.
+- `layout.json` and the `ar/`, `zh/` screenshots: wrong `dir`, clipped,
+  off-screen, or overlapping text. Look at the screenshots too; bidi problems
+  are not measured. File `overlap` rows as visual findings with reason
+  `layout_overlap`.
 
 **Done** when all of these hold:
 - `check-keys` exits 0;
@@ -297,6 +304,7 @@ Check the result with `llm-localizator validate <project>`.
 | `mcp` | stdio MCP server for agents (optional mcp extra) |
 | `metrics` | Edit rate, cycle time and coverage trend from history |
 | `migrate-state` | Recompute derived state fields after a signature-format change (no LLM) |
+| `normalize` | Apply the candidate normalizer (quotes, ellipsis, case, plurals) to existing values |
 | `onboard` | Set up a project in one step: init, approach, frozen locales, runtime path, tq check |
 | `open-pr` | Plan, open or check a pull request for changed catalogue files |
 | `org` | Show whether this project uses the organisation-level TM and glossary |
@@ -309,6 +317,7 @@ Check the result with `llm-localizator validate <project>`.
 | `release-diff` | Diff the current source against a release snapshot |
 | `release-freeze` | Snapshot source hashes for a named release |
 | `rename-placeholder` | Rename {old} to {new} in the English text and every translation (no re-translation) |
+| `report` | One shareable page: coverage, checks, review queue, spend and a go / no-go verdict (read-only) |
 | `rescore` | Submit a quality re-score job to taskqueue |
 | `review` | Submit an LLM review pass to taskqueue |
 | `review-risk` | Rank a locale's translations by how much a person should read them (read-only) |

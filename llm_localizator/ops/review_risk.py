@@ -21,7 +21,7 @@ from ..catalog import catalog_for
 from ..catalog.drafts import DraftStore
 from ..catalog.scores import quality_score_of
 from ..catalog.state import is_translated_value
-from ..pipeline.judge import suggestion_of
+from ..pipeline.judge import ISSUE_SIGNAL_PREFIX, issues_of, suggestion_of
 from ..pipeline.recording import provenance_stores
 from ..pipeline.scoring import is_risky_key
 from ..projects import ProjectConfig
@@ -29,9 +29,12 @@ from .types import OpResult
 
 __all__ = ["op_review_risk", "risk_of"]
 
+_SEVERITY_RISK = {"critical": 3.0, "major": 2.0, "minor": 1.0, "trivial": 0.4}
+
 
 def risk_of(*, source: str, score: float | None, signals: list[str], status: str,
-            has_draft: bool) -> tuple[float, list[str]]:
+            has_draft: bool, issues: list[dict[str, str]] | None = None,
+            ) -> tuple[float, list[str]]:
     """``(risk 0..∞, reasons)`` for one translated key. Pure, for tests."""
     risk, reasons = 0.0, []
     if score is None:
@@ -46,6 +49,18 @@ def risk_of(*, source: str, score: float | None, signals: list[str], status: str
     if suggestion_of(signals):
         risk += 1.5
         reasons.append("judge suggested another text")
+    typed = list(issues or [])
+    if not typed and any(
+        isinstance(s, str) and s.startswith(ISSUE_SIGNAL_PREFIX) for s in signals
+    ):
+        # Legacy / signal-only rows without a sidecar ``issues`` field.
+        risk += 1.0
+        reasons.append("judge reported a typed issue")
+    for issue in typed:
+        sev = issue.get("severity") or "minor"
+        risk += _SEVERITY_RISK.get(sev, 1.0)
+        cat = issue.get("category") or "accuracy"
+        reasons.append(f"judge {sev}/{cat}")
     if has_draft:
         risk += 1.5
         reasons.append("a held draft waits")
@@ -82,29 +97,44 @@ def op_review_risk(cfg: ProjectConfig, *, locale: str, limit: int = 50, fmt: str
             entry = scores.get(sk) if isinstance(scores.get(sk), dict) else None
             st = state.get(sk) if isinstance(state.get(sk), dict) else {}
             signals = list((entry or {}).get("signals") or [])
-            risk, reasons = risk_of(source=src, score=quality_score_of(entry), signals=signals,
-                                    status=str(st.get("status") or ""), has_draft=(ns, key) in drafts)
+            typed = issues_of(entry)
+            risk, reasons = risk_of(
+                source=src, score=quality_score_of(entry), signals=signals,
+                status=str(st.get("status") or ""), has_draft=(ns, key) in drafts,
+                issues=typed,
+            )
             if risk <= 0:
                 continue
             rows.append({"key": sk, "source": src, "text": text, "risk": risk,
                          "score": quality_score_of(entry), "reasons": reasons,
-                         "suggestion": suggestion_of(signals)})
+                         "suggestion": suggestion_of(signals), "issues": typed})
     rows.sort(key=lambda r: (-r["risk"], r["key"]))
     top = rows[:max(1, limit)]
     if fmt == "csv":
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["key", "source", "current", "suggestion", "risk", "score", "reasons", "decision"])
+        w.writerow(["key", "source", "current", "suggestion", "risk", "score",
+                    "issues", "reasons", "decision"])
         for r in top:
+            issue_col = "; ".join(
+                f"{i['severity']}/{i['category']}: {i['description']}" for i in r["issues"]
+            )
             w.writerow([r["key"], r["source"], r["text"], r["suggestion"] or "", r["risk"],
-                        "" if r["score"] is None else r["score"], "; ".join(r["reasons"]), ""])
+                        "" if r["score"] is None else r["score"], issue_col,
+                        "; ".join(r["reasons"]), ""])
         lines = buf.getvalue().splitlines()
     else:
         lines = []
         for r in top:
             lines.append(f"{r['risk']:5.2f}  {r['key']}: {r['source']!r} -> {r['text']!r}")
+            issue_note = ""
+            if r["issues"]:
+                issue_note = " | issues: " + "; ".join(
+                    f"{i['severity']}/{i['category']}: {i['description']}" for i in r["issues"]
+                )
             lines.append(f"       {'; '.join(r['reasons'])}"
-                         + (f" | judge: {r['suggestion']!r}" if r["suggestion"] else ""))
+                         + (f" | judge: {r['suggestion']!r}" if r["suggestion"] else "")
+                         + issue_note)
     return OpResult(
         ok=True, exit_code=0, command=command,
         summary=(f"{sum(1 for r in rows if r['risk'] >= 2)} high-risk {locale} translation(s) "

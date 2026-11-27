@@ -23,6 +23,18 @@ class StoreGap:
     folder: str                      # the metadata folder holding the locale folders, relative to the root
     source: str                      # the source-locale folder name (en-US, en, …)
     missing: dict[str, list[str]] = field(default_factory=dict)   # relative file -> locales without it
+    absent_locales: list[str] = field(default_factory=list)       # expect_locales with no folder at all
+
+
+def _folder_for_locale(locales: list[Path], want: str) -> Path | None:
+    """Match ``pl`` / ``pl-PL`` / ``pl_PL`` against existing store locale folders."""
+    norm = want.lower().replace("_", "-")
+    primary = norm.split("-")[0]
+    exact = [d for d in locales if d.name.lower().replace("_", "-") == norm]
+    if exact:
+        return exact[0]
+    same = [d for d in locales if d.name.lower().replace("_", "-").split("-")[0] == primary]
+    return same[0] if same else None
 
 
 def _metadata_dirs(root: Path, max_depth: int = 4) -> list[Path]:
@@ -42,7 +54,12 @@ def _metadata_dirs(root: Path, max_depth: int = 4) -> list[Path]:
     return out
 
 
-def store_metadata_gaps(root: Path, source_locale: str) -> list[StoreGap]:
+def store_metadata_gaps(
+    root: Path,
+    source_locale: str,
+    *,
+    expect_locales: list[str] | None = None,
+) -> list[StoreGap]:
     from ..scan.base import _locale_like
 
     root = Path(root)
@@ -50,7 +67,7 @@ def store_metadata_gaps(root: Path, source_locale: str) -> list[StoreGap]:
     gaps: list[StoreGap] = []
     for folder in _metadata_dirs(root):
         locales = [d for d in folder.iterdir() if d.is_dir() and _locale_like(d.name)]
-        if len(locales) < 2:
+        if len(locales) < 2 and not expect_locales:
             continue
         same = [d for d in locales if d.name.lower().replace("_", "-").split("-")[0] == primary]
         if not same:
@@ -66,6 +83,13 @@ def store_metadata_gaps(root: Path, source_locale: str) -> list[StoreGap]:
             without = sorted(d.name for d in locales if d != source and not (d / rel).is_file())
             if without:
                 gap.missing[rel] = without
-        if gap.missing:
+        if expect_locales:
+            absent = [
+                loc for loc in expect_locales
+                if loc.lower().replace("_", "-").split("-")[0] != primary
+                and _folder_for_locale(locales, loc) is None
+            ]
+            gap.absent_locales = absent
+        if gap.missing or gap.absent_locales:
             gaps.append(gap)
     return gaps

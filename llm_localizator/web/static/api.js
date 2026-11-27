@@ -131,7 +131,11 @@
       var decoder = new TextDecoder();
       function pump() {
         return reader.read().then(function (result) {
-          if (result.done) return r;
+          if (result.done) {
+            var tail = decoder.decode();  // flush a split multi-byte char
+            if (tail && onChunk) onChunk(tail);
+            return r;
+          }
           if (onChunk) onChunk(decoder.decode(result.value, { stream: true }));
           return pump();
         });

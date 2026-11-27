@@ -14,7 +14,7 @@ from .latin_tokens import SCREAMING_SNAKE_RE, strip_screaming_snake
 from .locale_code import base_language
 from .locales import profile
 from .scripts import char_script, expected_script, script_prompt_rule
-from .validate import glossary_violations, validate_translation
+from .validate import answer_leak, glossary_violations, validate_translation
 
 __all__ = [
     "QualityResult",
@@ -59,6 +59,8 @@ class QualityResult:
     signals: list[str] = field(default_factory=list)
     dimensions: dict[str, float] | None = None
     scorer: str = "bt"  # "bt" | "lqs" | "heuristic"
+    #: Typed judge issues (ADR-158); absent for BT/heuristic and older LQS rows.
+    issues: list[dict[str, str]] | None = None
 
     @property
     def ok(self) -> bool:
@@ -165,6 +167,9 @@ def score_translation(
     ok, reason = validate_translation(source, translated, locale, glossary, standard=standard)
     if not ok:
         return QualityResult(0.0, [reason], _failed_dimensions(reason), scorer="heuristic")
+    leak = answer_leak(source, translated)
+    if leak:
+        return QualityResult(0.0, [leak], {"placeholder_ok": 1.0}, scorer="heuristic")
 
     score = 1.0
 

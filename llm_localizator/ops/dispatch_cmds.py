@@ -492,19 +492,22 @@ def _cmd_translate(cfg: ProjectConfig, body: dict, report: Reporter | None) -> d
         only_missing=bool(body.get("only_missing") or body.get("onlyMissing")),
         sync=bool(body.get("sync")),
     )
-    # Align with apply/bulk-clear for *inline* runs. Queue-preferring paths
-    # (tq on PATH, no inline) do not need confirm — the worker is the spend gate.
-    from .queue_policy import should_enqueue
+    # Explicit inline (web "Run locally") needs confirm. Queued runs and the
+    # no-tq default (CLI parity: run in this process) do not.
     from ..projects.taskqueue import tq_available
 
-    if (
-        not req.dry_run
-        and not should_enqueue(
-            submit=req.submit, inline=req.inline, tq=tq_available(),
-        )
-        and not body.get("confirm")
-    ):
-        return {"ok": False, "error": "set confirm=true to run translate"}
+    gate = _spend_gate(
+        "translate",
+        {
+            "dry_run": req.dry_run,
+            "confirm": body.get("confirm"),
+            "submit": req.submit,
+            "inline": req.inline,
+        },
+        tq=tq_available(),
+    )
+    if gate:
+        return gate
     return op_translate(cfg, req, report=report).to_dict()
 
 
@@ -536,25 +539,37 @@ def _cmd_improve(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dic
         tags=_key_list(body.get("tags")),
         inline=bool(body.get("inline")),
     )
-    from .queue_policy import should_enqueue
     from ..projects.taskqueue import tq_available
 
-    if (
-        not req.dry_run
-        and not should_enqueue(
-            submit=req.submit, inline=req.inline, tq=tq_available(),
-        )
-        and not body.get("confirm")
-    ):
-        return {"ok": False, "error": "set confirm=true to run improve"}
+    gate = _spend_gate(
+        "improve",
+        {
+            "dry_run": req.dry_run,
+            "confirm": body.get("confirm"),
+            "submit": req.submit,
+            "inline": req.inline,
+        },
+        tq=tq_available(),
+    )
+    if gate:
+        return gate
     return op_improve(cfg, req, report=report).to_dict()
 
 
 
-def _spend_gate(command: str, body: dict, *, queueable: bool = True) -> dict | None:
-    """Inline LLM runs need ``confirm`` (M0, audit ops #14); dry runs and queued runs do not (the worker is the gate).
+def _spend_gate(
+    command: str,
+    body: dict,
+    *,
+    queueable: bool = True,
+    tq: bool | None = None,
+) -> dict | None:
+    """Explicit inline LLM runs need ``confirm`` (M0, audit ops #14).
 
-    The web Ops drawer sends ``confirm`` for every inline run; API and agent callers must say so explicitly.
+    Dry runs and queued runs do not (the worker is the gate). Without ``tq``,
+    the default operator path runs locally — same as the CLI — so confirm is
+    not required unless the caller set ``inline=true`` (web "Run locally").
+    The web Ops drawer still sends ``confirm`` for every inline run.
     """
     if body.get("dry_run") or body.get("confirm"):
         return None
@@ -562,7 +577,14 @@ def _spend_gate(command: str, body: dict, *, queueable: bool = True) -> dict | N
         from .queue_policy import should_enqueue
         from ..projects.taskqueue import tq_available
 
-        if should_enqueue(submit=bool(body.get("submit")), inline=bool(body.get("inline")), tq=tq_available()):
+        available = tq_available() if tq is None else tq
+        if should_enqueue(
+            submit=bool(body.get("submit")),
+            inline=bool(body.get("inline")),
+            tq=available,
+        ):
+            return None
+        if not body.get("inline"):
             return None
     return {"ok": False, "exit_code": 64, "error": f"set confirm=true to run {command}",
             "summary": f"set confirm=true to run {command}"}
@@ -631,6 +653,71 @@ def _cmd_explain_scan(cfg: ProjectConfig, body: dict, report: Reporter | None) -
         line = str(body.get("line") or "").strip()
         target = f"{body['file']}:{line}" if line else str(body["file"])
     return op_explain_scan(cfg, ExplainScanRequest(target=target, adapter=body.get("adapter") or None)).to_dict()
+
+
+def _first_locale(cfg: ProjectConfig, loc, locs) -> str:
+    """``locale``, else the first of ``locales``, else the first active target."""
+    if not loc and locs:
+        loc = locs[0] if isinstance(locs, list) else str(locs).split(",")[0]
+    return str(loc or (cfg.active_targets() or cfg.targets or [""])[0]).strip()
+
+
+def _cmd_review_risk(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
+    from .review_risk import op_review_risk
+
+    return op_review_risk(
+        cfg, locale=_first_locale(cfg, body.get("locale"), body.get("locales")), limit=int(body.get("limit") or 50), fmt="text",
+    ).to_dict()
+
+
+def _cmd_glossary_learn(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
+    from .glossary_learn import op_glossary_learn
+
+    # Writing the glossary needs an explicit write=true; the default only proposes.
+    return op_glossary_learn(
+        cfg, locale=_first_locale(cfg, body.get("locale"), body.get("locales")), write=body.get("write") is True,
+    ).to_dict()
+
+
+def _csv_list(value) -> list[str] | None:
+    """A body field given as "a,b" or ["a", "b"]; None when empty."""
+    if isinstance(value, str):
+        return [x.strip() for x in value.split(",") if x.strip()] or None
+    return list(value) if value else None
+
+
+def _cmd_normalize(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
+    from .normalize_existing import op_normalize
+
+    namespace, namespaces = _ns_pair(body)
+    # Writes only with an explicit write=true; the default is a report.
+    return op_normalize(
+        cfg, locales=_csv_list(body.get("locales")),
+        namespaces=namespaces or ([namespace] if namespace else None),
+        write=body.get("write") is True, steps=_csv_list(body.get("steps")),
+    ).to_dict()
+
+
+def _cmd_report(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
+    from .report import op_report
+
+    # The web never writes a server-side file: the page shows or downloads data.text.
+    return op_report(
+        cfg, fmt=str(body.get("format") or "md"), locales=_csv_list(body.get("locales")),
+        review_limit=int(body.get("review_limit") or 5),
+    ).to_dict()
+
+
+def _cmd_cycle(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
+    from .cycle import op_cycle
+
+    locales = _csv_list(body.get("locales"))
+    # Never follow from HTTP: following blocks the request for up to an hour.
+    return op_cycle(
+        cfg, locales=locales or None,
+        translate=body.get("translate") is True, repair=body.get("repair") is True,
+        review_limit=int(body.get("review_limit") or 15), follow=False,
+    ).to_dict()
 
 
 def _cmd_adopt(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dict:
@@ -833,6 +920,7 @@ def _cmd_bakeoff(cfg: ProjectConfig, body: dict, report: Reporter | None) -> dic
         models=_key_list(body.get("models")),
         limit=_int_or(body, "limit", DEFAULT_BAKEOFF_LIMIT) or DEFAULT_BAKEOFF_LIMIT,
         corpus=body.get("corpus") or None,
+        slice=body.get("slice") or None,
         out=body.get("out") or None,
         family=body.get("family") or None,
         matrix=bool(body.get("matrix")),
@@ -984,6 +1072,11 @@ _REGISTRY: dict[str, Callable[[ProjectConfig, dict, Reporter | None], dict]] = {
     "queue_engine": _cmd_queue_engine,
     "approach": _cmd_approach,
     "adopt": _cmd_adopt,
+    "review_risk": _cmd_review_risk,
+    "glossary_learn": _cmd_glossary_learn,
+    "cycle": _cmd_cycle,
+    "normalize": _cmd_normalize,
+    "report": _cmd_report,
     "agent_backlog": _cmd_agent_backlog,
     "agent_hardcoded": _cmd_agent_hardcoded,
     "patch": _cmd_patch,

@@ -38,6 +38,8 @@ def test_document_source_texts_reads_markdown(tmp_path, make_config) -> None:
 
 
 def test_queued_review_forwards_namespace(monkeypatch, tmp_path, make_config) -> None:
+    from contextlib import contextmanager
+
     from llm_localizator.ops import review as review_mod
 
     cfg = make_config(tmp_path)
@@ -53,10 +55,14 @@ def test_queued_review_forwards_namespace(monkeypatch, tmp_path, make_config) ->
         captured["overrides"] = dict(overrides)
         return Outcome()
 
+    @contextmanager
+    def fake_cloud_session(*_a, **_k):
+        yield None
+
     monkeypatch.setattr(review_mod, "tq_available", lambda: True)
     monkeypatch.setattr(review_mod, "should_enqueue", lambda **kw: True)
     monkeypatch.setattr(review_mod, "submit", fake_submit)
-    monkeypatch.setattr(review_mod, "cloud_gate", lambda *a, **k: (None, None))
+    monkeypatch.setattr(review_mod, "cloud_session", fake_cloud_session)
 
     from llm_localizator.ops.types import ReviewRequest
 

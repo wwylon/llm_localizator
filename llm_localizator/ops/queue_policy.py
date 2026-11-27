@@ -16,12 +16,16 @@ def should_enqueue(
 ) -> bool:
     """Return True when the op should submit to taskqueue instead of running here.
 
-    Matches translate/bakeoff: enqueue when the operator asked to submit, or when
-    ``tq`` is on PATH and the caller did not force ``inline`` (``run-*`` paths).
+    Enqueue only when ``tq`` is on PATH. Prefer the queue when the operator asked
+    to submit, or when ``tq`` is available and the caller did not force
+    ``inline`` (``run-*`` paths). Without ``tq``, callers fall through to a
+    local run — the engine must work without taskqueue installed.
 
     Pass ``tq=`` explicitly so tests can monkeypatch the caller's ``tq_available``.
     """
     if dry_run:
         return False
     available = tq_available() if tq is None else tq
-    return bool(submit or (available and not inline))
+    if not available:
+        return False
+    return bool(submit or not inline)

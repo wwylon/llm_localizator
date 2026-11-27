@@ -60,6 +60,11 @@ __all__ = [
 RUN_ID = re.compile(r"wf_[0-9A-Za-z_-]{6,48}")
 MAX_LINES = 400
 KEEP_RUNS = 20
+#: Persist the frontier after this many non-waiting items so a kill mid-advance
+#: can resume without replaying finished work.
+PERSIST_EVERY = 5
+TERMINAL_STATUSES = frozenset({"done", "failed", "canceled"})
+ACTIVE_STATUSES = frozenset({"running", "waiting"})
 _GUARD = threading.Lock()
 #: One lock and one cancel flag per run id, so a long run never blocks others.
 _RUN_LOCKS: dict[str, threading.RLock] = {}
@@ -114,12 +119,36 @@ def load_run(cfg: ProjectConfig, run_id: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _prune_old_runs(cfg: ProjectConfig) -> None:
+    """Drop surplus *terminal* run files; never delete running/waiting ones."""
+    runs = _runs_dir(cfg)
+    try:
+        files = sorted(runs.glob("wf_*.json"), key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return
+    terminal: list = []
+    for path in files:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            terminal.append(path)  # unreadable → treat as disposable
+            continue
+        status = data.get("status") if isinstance(data, dict) else None
+        if status in ACTIVE_STATUSES:
+            continue
+        if status in TERMINAL_STATUSES or status is None:
+            terminal.append(path)
+    for old in terminal[:-KEEP_RUNS]:
+        try:
+            old.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _save_run(cfg: ProjectConfig, rec: dict[str, Any]) -> None:
     atomic_write_text(_run_path(cfg, rec["id"]), json.dumps(rec, ensure_ascii=False))
-    try:  # prune: keep only the newest finished/failed/canceled records
-        files = sorted(_runs_dir(cfg).glob("wf_*.json"), key=lambda p: p.stat().st_mtime)
-        for old in files[:-KEEP_RUNS]:
-            old.unlink(missing_ok=True)
+    try:
+        _prune_old_runs(cfg)
     except OSError:
         pass
 
@@ -392,6 +421,22 @@ class _Run:
             return self._items(nxt, keys)
         raise ValueError(f"unknown block type {kind!r}")
 
+    def _hardcoded_total(self) -> float | None:
+        """High+medium hardcoded hits from the last scan cache (for ``if hardcoded``)."""
+        if hasattr(self, "_hc_total"):
+            return self._hc_total
+        try:
+            from .agent_hardcoded import scan_cache_status
+
+            st = scan_cache_status(self.cfg)
+            counts = st.get("counts") or {}
+            self._hc_total = float(
+                int(counts.get("high", 0)) + int(counts.get("medium", 0))
+            )
+        except Exception:  # noqa: BLE001 - missing cache → treat as unscored
+            self._hc_total = None
+        return self._hc_total
+
     def _exec_if(self, pos, block, keys, nxt) -> list[dict[str, Any]]:
         keys = self.expand() if keys is None else keys
         self.count(pos, len(keys))
@@ -402,9 +447,22 @@ class _Run:
             if block["field"] == "score" and score is None:
                 self.stats["skipped_unscored"] += 1
                 continue
+            hc = self._hardcoded_total() if block["field"] == "hardcoded" else None
+            if block["field"] == "hardcoded" and hc is None:
+                self.stats["skipped_unscored"] += 1
+                continue
+            finding_n = 0.0
+            if block["field"] == "findings":
+                bad = getattr(self, "_finding_keys", None)
+                if bad is None:
+                    self.stats["skipped_unscored"] += 1
+                    continue
+                finding_n = 1.0 if (locale, ns, key) in bad else 0.0
             entry = self.state.entry(locale, ns, key) or {}
             ctx = {
                 "score": score,
+                "hardcoded": hc,
+                "findings": finding_n,
                 "status": entry.get("status") or "machine",
                 "locale": locale,
                 "namespace": ns,
@@ -486,7 +544,10 @@ class _Run:
         return self._after_llm(kind, pos, keys, nxt, must_succeed=True)
 
     def _exec_validate(self, pos, keys, nxt) -> list[dict[str, Any]]:
-        """Run the catalogue checks on the scope; findings are logged, keys continue."""
+        """Run the catalogue checks on the scope; findings are logged, keys continue.
+
+        Also fills ``_finding_keys`` so a later ``if findings ge 1`` can branch.
+        """
         keys = self.expand() if keys is None else keys
         self.count(pos, len(keys))
         if self.dry or not keys:
@@ -500,13 +561,25 @@ class _Run:
             locales=sorted(self.by_locale(keys)),
             namespace=scope.get("namespace"), namespaces=scope.get("namespaces"),
         ))
-        findings = len(res.data.get("findings") or [])
+        bad: set[tuple[str, str, str]] = set()
+        for row in res.data.get("findings") or []:
+            if not isinstance(row, dict):
+                continue
+            loc, ns, key = row.get("locale"), row.get("namespace"), row.get("key")
+            if loc is None or key is None:
+                continue
+            bad.add((str(loc), str(ns or ""), str(key)))
+        self._finding_keys = bad
+        findings = len(bad)
         self.stats["validated"] += len(keys)
         self.log(f"validate: {res.summary}")
         for line in res.lines[:6]:
             self.log(f"  {line}")
         if findings:
-            self.log(f"validate: {findings} finding(s); keys continue (use Flag or a ticket to act)")
+            self.log(
+                f"validate: {findings} key(s) with findings; "
+                "branch with `if findings ge 1` then Flag / review_ticket"
+            )
         return self._items(nxt, keys)
 
     def _exec_review(self, pos, keys, nxt) -> list[dict[str, Any]]:
@@ -556,6 +629,8 @@ class _Run:
     def advance(self) -> None:
         """Run ready items until the frontier is empty or only waiting items remain."""
         frontier: list[dict[str, Any]] = self.rec.get("frontier") or []
+        self.rec["status"] = "running"
+        steps = 0
         try:
             while True:
                 if _cancel_flag(self.rec["id"]).is_set():
@@ -571,6 +646,9 @@ class _Run:
                 item = frontier.pop(idx)
                 frontier[idx:idx] = self.exec_item(item)
                 self.rec["frontier"] = frontier
+                steps += 1
+                if steps % PERSIST_EVERY == 0:
+                    self._persist()
         except Exception as exc:  # noqa: BLE001 - surfaced on the run record
             self.rec["status"] = "failed"
             self.rec["message"] = str(exc)
@@ -719,17 +797,22 @@ def start_run(cfg: ProjectConfig, spec: "WorkflowSpec", req: "WorkflowRequest") 
 
 
 def resume_run(cfg: ProjectConfig, spec: "WorkflowSpec", run_id: str) -> OpResult | None:
-    """Continue a waiting run; idempotent. ``None`` when the id is unknown."""
+    """Continue a waiting or stalled running run; idempotent. ``None`` if unknown."""
     if not RUN_ID.fullmatch(run_id or ""):
         return None
     with _run_lock(run_id):
         rec = load_run(cfg, run_id)
         if rec is None:
             return None
-        if rec.get("status") == "waiting":
+        status = rec.get("status")
+        if status == "waiting":
             run = _Run(cfg, spec, rec)
             if run.probe_waiting():
                 run.advance()
+        elif status == "running":
+            # Process died mid-advance: frontier was checkpointed; continue it.
+            run = _Run(cfg, spec, rec)
+            run.advance()
         result = _result(spec, rec)
     _release_run(run_id, rec.get("status"))
     return result

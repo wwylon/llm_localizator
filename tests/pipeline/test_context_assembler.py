@@ -90,7 +90,7 @@ def test_hard_gates_and_scorer_version() -> None:
     assert ok and reason is None
     bad, reason = hard_gates_ok("{n} items", "pozycje", "pl", {})
     assert not bad and reason
-    assert scorer_version("lqs") == "lqs-1"
+    assert scorer_version("lqs") == "lqs-2"
     assert scorer_version("bt") == "bt-1"
 
 

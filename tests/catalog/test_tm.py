@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 import json
+from pathlib import Path
 
 from llm_localizator.catalog.history import HistoryStore
 from llm_localizator.catalog.state import StateStore

@@ -45,6 +45,7 @@
       uiT("setup_step_languages", "Languages"),
       uiT("setup_step_model", "Model"),
       uiT("setup_step_product", "About your product"),
+      uiT("setup_step_approach", "How to translate"),
       uiT("setup_step_finish", "Finish"),
     ];
   }
@@ -58,6 +59,8 @@
     catalogFormats: ["json-nested", "json-flat", "yaml", "po", "arb", "android-xml"],
     catalogPath: "",
     engine: "",
+    approach: "",
+    approaches: [],
   };
   var known = [];
   var models = { list: [], error: "", loaded: false };
@@ -518,7 +521,40 @@
     body.appendChild(field(uiT("setup_what_is_it", "What is it?"), area));
   }
 
-  // ---- step 5: finish -------------------------------------------------------
+  // ---- step: approach (ADR-123 / plan D4) ------------------------------------
+
+  function paintApproach() {
+    body.appendChild(el("h2", "wizard-title", uiT("setup_approach_title", "How should strings get translated?")));
+    body.appendChild(el(
+      "p", "wizard-help",
+      uiT("setup_approach_help", "This records [translate] approach in the project config. You can change it later with llm-localizator approach --set."),
+    ));
+    var list = el("div", "setup-approach-list");
+    (state.approaches || []).forEach(function (a) {
+      var row = el("label", "op-check setup-approach-row");
+      var radio = el("input", "");
+      radio.type = "radio";
+      radio.name = "setup-approach";
+      radio.value = a.id;
+      if (state.approach === a.id) radio.checked = true;
+      radio.addEventListener("change", function () {
+        if (radio.checked) state.approach = a.id;
+      });
+      row.appendChild(radio);
+      var text = el("span", "");
+      text.appendChild(el("strong", "", a.title || a.id));
+      text.appendChild(document.createTextNode(" — " + (a.words || "")));
+      if (a.when) text.appendChild(el("div", "field-hint", a.when));
+      row.appendChild(text);
+      list.appendChild(row);
+    });
+    if (!(state.approaches || []).length) {
+      list.appendChild(el("p", "wizard-warning", uiT("setup_approach_missing", "Approach list did not load.")));
+    }
+    body.appendChild(list);
+  }
+
+  // ---- step: finish -------------------------------------------------------
 
   function summaryRow(list, label, value) {
     list.appendChild(el("dt", "", label));
@@ -537,6 +573,7 @@
     );
     summaryRow(list, uiT("set_col_model", "Model"), state.model || uiT("setup_sum_not_chosen", "not chosen"));
     summaryRow(list, uiT("setup_sum_product", "Product"), state.domain || uiT("setup_sum_not_described", "not described"));
+    summaryRow(list, uiT("setup_sum_approach", "Approach"), state.approach || uiT("setup_sum_not_chosen", "not chosen"));
     body.appendChild(list);
     if (!state.targets.length) {
       body.appendChild(el(
@@ -593,6 +630,7 @@
       targets: state.targets,
       model: state.model || undefined,
       domain: state.domain || undefined,
+      approach: state.approach || undefined,
     };
     if (state.catalogFormat) payload.catalog_format = state.catalogFormat;
     if (state.catalogPath) payload.catalog_path = state.catalogPath;
@@ -619,7 +657,7 @@
     });
   }
 
-  var painters = [paintEngine, paintProject, paintLanguages, paintModel, paintDomain, paintFinish];
+  var painters = [paintEngine, paintProject, paintLanguages, paintModel, paintDomain, paintApproach, paintFinish];
 
   function paint() {
     body.replaceChildren();
@@ -629,7 +667,7 @@
     var wizardTitle = body.querySelector(".wizard-title");
     if (wizardTitle && window.LLMHelp) {
       wizardTitle.appendChild(window.LLMHelp.helpBtn(
-        ["settings:engine", "setup:project", "setup:languages", "setup:model", "setup:product", "setup:finish"][index],
+        ["settings:engine", "setup:project", "setup:languages", "setup:model", "setup:product", "setup:approach", "setup:finish"][index],
       ));
     }
     prev.disabled = index === 0;
@@ -670,6 +708,8 @@
     state.catalogFormat = current.catalogFormat || "";
     if (current.catalogFormats && current.catalogFormats.length) state.catalogFormats = current.catalogFormats;
     state.catalogPath = current.catalogPath || "";
+    state.approach = current.approach || "";
+    state.approaches = current.approaches || [];
     known = (results[1] && results[1].locales) || [];
     var modelInfo = results[2] || {};
     models.list = modelInfo.models || [];

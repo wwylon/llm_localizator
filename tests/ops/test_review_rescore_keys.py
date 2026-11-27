@@ -84,6 +84,8 @@ def test_rescore_submit_override_keys(seeded, monkeypatch) -> None:
 def test_dispatch_review_and_rescore_keys(seeded, monkeypatch) -> None:
     cfg, _ = seeded
     got: dict = {}
+    # No tq required: default operator path runs locally without confirm.
+    monkeypatch.setattr("llm_localizator.projects.taskqueue.tq_available", lambda: False)
     monkeypatch.setattr("llm_localizator.ops.dispatch_cmds.op_review",
                         lambda c, req, report=None: got.update(review=req.keys) or review_mod.OpResult(
                             ok=True, exit_code=0, command="review", summary=""))

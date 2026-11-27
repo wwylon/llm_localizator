@@ -137,12 +137,14 @@ def _lint(cfg: ProjectConfig, scanner) -> OpResult:
     by_file: dict[str, list] = {}
     for hit in result.hardcoded:
         by_file.setdefault(hit.file, []).append(hit)
+    from ..scan.base import relative_posix, split_lines
+
     problems: list[str] = []
-    files = {p.relative_to(scanner.root).as_posix(): p for p in scanner.iter_files()}
+    files = {relative_posix(p, scanner.root): p for p in scanner.iter_files()}
     for rel in sorted(set(files) | set(by_file)):
         path = files.get(rel) or scanner.root / rel
         try:
-            lines = path.read_text(encoding="utf-8").splitlines()
+            lines = split_lines(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):
             continue
         problems += [f"{rel}:{p}" for p in lint_directives(lines, by_file.get(rel, []),

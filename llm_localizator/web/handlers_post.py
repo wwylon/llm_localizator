@@ -99,6 +99,17 @@ class PostRoutesMixin:
                     prompt_tbl = tomlkit.table()
                     doc["prompt"] = prompt_tbl
                 prompt_tbl["domain"] = str(body["domain"])
+            if body.get("approach"):
+                from ..projects.config import APPROACH_IDS
+
+                approach = str(body["approach"]).strip()
+                if approach not in APPROACH_IDS:
+                    return self._send({"ok": False, "error": f"unknown approach {approach!r}"}, 400)
+                translate_tbl = doc.get("translate")
+                if not isinstance(translate_tbl, dict):
+                    translate_tbl = tomlkit.table()
+                    doc["translate"] = translate_tbl
+                translate_tbl["approach"] = approach
             if body.get("catalog_format") or body.get("catalog_path"):
                 catalog = doc.get("catalog")
                 if not isinstance(catalog, dict):
@@ -188,7 +199,14 @@ class PostRoutesMixin:
             })
         fmt = str(body.get("format") or "csv").lower()
         screenshots = bool(body.get("screenshots"))
-        locs = body.get("locales") or self._allowed_locales(list(st.cfg.targets))
+        # Requested locales are narrowed to what this actor may see (a locale-scoped
+        # translator must not export other locales by naming them in the body).
+        requested = body.get("locales") or list(st.cfg.targets)
+        if not isinstance(requested, list):
+            requested = [x.strip() for x in str(requested).split(",") if x.strip()]
+        locs = self._allowed_locales([str(x) for x in requested])
+        if not locs:
+            return self._send({"ok": False, "error": "no locales allowed"}, 403)
         namespaces = body.get("namespaces")
         if not namespaces and body.get("namespace"):
             namespaces = [body["namespace"]]
@@ -203,6 +221,8 @@ class PostRoutesMixin:
                 screenshots=screenshots,
                 file_count=body.get("file_count", 1),
                 approved_only=bool(body.get("approved_only")),
+                xliff_version=str(body.get("xliff_version") or "1.2"),
+                bom=bool(body.get("bom")),
                 keys=_export_keys(body.get("keys")),
             )
         except ValueError as exc:

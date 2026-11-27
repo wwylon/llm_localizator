@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 
 from .base import CompletionRequest, Provider, ProviderError
+from .batch import PartialBatchError, batch_custom_ids, best_effort_cancel, fetch_jsonl
 from .http_retry import urlopen_json
 from .keys import candidate_vars, resolve_api_key
 
@@ -170,10 +171,8 @@ class OpenAICompatibleProvider(Provider):
             )
         # Build JSONL for /v1/batches (chat.completions endpoint).
         lines: list[str] = []
-        id_order: list[str] = []
-        for i, request in enumerate(requests):
-            cid = (request.custom_id or f"req-{i}").replace(":", "_")[:64]
-            id_order.append(cid)
+        id_order = batch_custom_ids([r.custom_id for r in requests])
+        for cid, request in zip(id_order, requests):
             body = self._chat_payload(request)
             lines.append(json.dumps({
                 "custom_id": cid,
@@ -224,7 +223,11 @@ class OpenAICompatibleProvider(Provider):
         output_file_id = None
         while True:
             if time.monotonic() > deadline:
-                raise ProviderError(f"OpenAI Batch {batch_id} timed out")
+                best_effort_cancel(urllib.request.Request(
+                    f"{OPENAI_BATCHES_URL}/{batch_id}/cancel",
+                    headers=self._auth_headers(), method="POST",
+                ))
+                raise ProviderError(f"OpenAI Batch {batch_id} timed out (cancel requested)")
             status_req = urllib.request.Request(
                 f"{OPENAI_BATCHES_URL}/{batch_id}",
                 headers=self._auth_headers(),
@@ -245,21 +248,10 @@ class OpenAICompatibleProvider(Provider):
             headers={"Authorization": f"Bearer {self.api_key}"},
             method="GET",
         )
-        try:
-            with urllib.request.urlopen(content_req, timeout=120) as resp:
-                payload_bytes = resp.read()
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:400]
-            raise ProviderError(
-                f"OpenAI Batch results HTTP {exc.code}: {detail}"
-            ) from exc
+        rows = fetch_jsonl(content_req, "OpenAI")
         by_id: dict[str, dict] = {}
         total_in = total_out = total_cached = 0
-        for line in payload_bytes.decode("utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
+        for row in rows:
             cid = str(row.get("custom_id") or "")
             by_id[cid] = row
             resp = (row.get("response") or {}).get("body") or {}
@@ -271,18 +263,30 @@ class OpenAICompatibleProvider(Provider):
         self.last_usage = {"input_tokens": total_in, "output_tokens": total_out}
         if total_cached:
             self.last_usage["cached_tokens"] = total_cached
-        texts: list[str] = []
-        for cid in id_order:
+        texts: list[str | None] = []
+        errors: dict[int, str] = {}
+        for i, cid in enumerate(id_order):
             row = by_id.get(cid)
+            text: str | None = None
             if not row:
-                raise ProviderError(f"OpenAI Batch missing result for {cid}")
-            err = row.get("error")
-            if err:
-                raise ProviderError(f"OpenAI Batch item {cid} failed: {err}")
-            resp = (row.get("response") or {})
-            body = resp.get("body") or {}
-            texts.append(_choice_text(self.kind, body))
-        return texts
+                errors[i] = "missing result"
+            elif row.get("error"):
+                errors[i] = str(row.get("error"))
+            else:
+                body = (row.get("response") or {}).get("body") or {}
+                try:
+                    text = _choice_text(self.kind, body)
+                except ProviderError as exc:
+                    errors[i] = str(exc)
+            texts.append(None if i in errors else text)
+        if errors:
+            first = next(iter(errors.items()))
+            raise PartialBatchError(
+                f"OpenAI Batch: {len(errors)}/{len(id_order)} item(s) failed "
+                f"(e.g. {id_order[first[0]]}: {first[1]})",
+                texts, errors,
+            )
+        return texts  # type: ignore[return-value]
 
     def health_check(self) -> bool:
         return bool(self.api_key)

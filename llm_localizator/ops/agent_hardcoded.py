@@ -28,7 +28,7 @@ from ..projects.paths import project_path
 __all__ = ["op_agent_hardcoded", "catalogue_gap_audit", "scan_cache_status"]
 
 # Bump when a scanner change should invalidate every stored per-file result.
-_SCAN_VERSION = 70  # bump on any scanner change; history: docs/scanners.md "Scanner versions"
+_SCAN_VERSION = 71  # bump on any scanner change; history: docs/scanners.md "Scanner versions"
 
 _PROMPT = (
     "List user-visible string literals in this source file that are NOT already "
@@ -45,10 +45,11 @@ _SIDE_SUFFIXES = (".strings", ".xcstrings")
 _SIDE_SKIP = frozenset({".git", "node_modules", "Pods", "build", "DerivedData", ".build", "Carthage", ".venv", "dist"})
 
 
-def _side_files_digest(root: Path) -> str:
+def _collect_side_sigs(root: Path) -> dict[str, str]:
+    """Relative path → ``mtime|size`` for side files that affect scan results."""
     import os
 
-    digest = hashlib.sha1()
+    out: dict[str, str] = {}
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in _SIDE_SKIP and not d.startswith(".llm"))
         for name in sorted(filenames):
@@ -58,8 +59,19 @@ def _side_files_digest(root: Path) -> str:
                 except OSError:
                     continue
                 rel = os.path.relpath(os.path.join(dirpath, name), root).replace("\\", "/")
-                digest.update(f"{rel}|{stat.st_mtime_ns}|{stat.st_size}\n".encode("utf-8"))
+                out[rel] = f"{stat.st_mtime_ns}|{stat.st_size}"
+    return out
+
+
+def _digest_sigs(sigs: dict[str, str]) -> str:
+    digest = hashlib.sha1()
+    for rel in sorted(sigs):
+        digest.update(f"{rel}|{sigs[rel]}\n".encode("utf-8"))
     return digest.hexdigest()
+
+
+def _side_files_digest(root: Path) -> str:
+    return _digest_sigs(_collect_side_sigs(root))
 
 
 def _settings_key(cfg: ProjectConfig, adapter: str, side: str | None = None) -> str:
@@ -153,19 +165,33 @@ def _scan_files_routed(
     return result, files
 
 
-def _fingerprint(cfg: ProjectConfig, scanner, adapter: str, limit: int | None, side: str | None = None) -> str:
+def _fingerprint(
+    cfg: ProjectConfig, scanner, adapter: str, limit: int | None, side: str | None = None,
+) -> str:
     """Hash of every scanned file's name, mtime and size plus the scan settings."""
+    key, _meta = _fingerprint_with_meta(cfg, scanner, adapter, limit, side)
+    return key
+
+
+def _fingerprint_with_meta(
+    cfg: ProjectConfig, scanner, adapter: str, limit: int | None, side: str | None = None,
+    *, side_sigs: dict[str, str] | None = None,
+) -> tuple[str, dict]:
+    """Like ``_fingerprint``, also returning tree/side/dir sigs for incremental status checks."""
     from ..scan.literals import _literal_paths
 
     scanner.reset_tree()  # fresh walk; _scan_files then reuses it
+    root = Path(cfg.root)
+    if side_sigs is None:
+        side_sigs = _collect_side_sigs(root)
+    side_dig = side if side is not None else _digest_sigs(side_sigs)
     digest = hashlib.sha1()
     digest.update(json.dumps(
-        [
-            _SCAN_VERSION, limit, *scan_settings(cfg, adapter),
-            side if side is not None else _side_files_digest(Path(cfg.root)),
-        ],
+        [_SCAN_VERSION, limit, *scan_settings(cfg, adapter), side_dig],
         default=str,
     ).encode("utf-8"))
+    tree_sigs: dict[str, str] = {}
+    dir_mtimes: dict[str, int] = {}
     seen: set[Path] = set()
     for path in list(scanner.iter_files()) + list(_literal_paths(scanner)):
         if path in seen:
@@ -175,8 +201,59 @@ def _fingerprint(cfg: ProjectConfig, scanner, adapter: str, limit: int | None, s
             stat = path.stat()
         except OSError:
             continue
-        digest.update(f"{path.as_posix()}|{stat.st_mtime_ns}|{stat.st_size}\n".encode("utf-8"))
-    return digest.hexdigest()
+        name = path.as_posix()
+        sig = f"{stat.st_mtime_ns}|{stat.st_size}"
+        tree_sigs[name] = sig
+        digest.update(f"{name}|{sig}\n".encode("utf-8"))
+        parent = path.parent.as_posix()
+        if parent not in dir_mtimes:
+            try:
+                dir_mtimes[parent] = path.parent.stat().st_mtime_ns
+            except OSError:
+                pass
+    meta = {
+        "treeSigs": tree_sigs,
+        "dirMtimes": dir_mtimes,
+        "sideSigs": side_sigs,
+        "sideDigest": side_dig,
+    }
+    return digest.hexdigest(), meta
+
+
+def _cache_still_fresh(cached: dict, cfg: ProjectConfig, adapter: str) -> bool:
+    """True when re-statting known dirs/files proves the cached fingerprint is still valid.
+
+    Directory mtimes catch newly added source files without a full tree walk when
+    the OS updates the parent directory on create/delete (Windows and POSIX).
+    """
+    tree = cached.get("treeSigs")
+    dirs = cached.get("dirMtimes")
+    side = cached.get("sideSigs")
+    if not isinstance(tree, dict) or not isinstance(dirs, dict) or not isinstance(side, dict):
+        return False
+    for d, want in dirs.items():
+        try:
+            if Path(d).stat().st_mtime_ns != want:
+                return False
+        except OSError:
+            return False
+    for name, want in tree.items():
+        try:
+            st = Path(name).stat()
+            if f"{st.st_mtime_ns}|{st.st_size}" != want:
+                return False
+        except OSError:
+            return False
+    root = Path(cfg.root)
+    for rel, want in side.items():
+        try:
+            st = (root / rel).stat()
+            if f"{st.st_mtime_ns}|{st.st_size}" != want:
+                return False
+        except OSError:
+            return False
+    side_dig = cached.get("sideDigest") or _digest_sigs(side)
+    return _settings_key(cfg, adapter, side_dig) == cached.get("settings")
 
 
 def _cache_path(cfg: ProjectConfig) -> Path:
@@ -214,7 +291,7 @@ def _cached_hits(stored: dict) -> list[dict]:
 
 def _save_cache(
     cfg: ProjectConfig, key: str, result: ScanResult, limit: int | None = None,
-    *, settings: str = "", file_store: dict | None = None,
+    *, settings: str = "", file_store: dict | None = None, meta: dict | None = None,
 ) -> None:
     payload = {
         "key": key,
@@ -225,6 +302,10 @@ def _save_cache(
         "filesScanned": result.files_scanned,
         "suppressed": result.suppressed,
     }
+    if meta:
+        for field in ("treeSigs", "dirMtimes", "sideSigs", "sideDigest"):
+            if field in meta:
+                payload[field] = meta[field]
     hits = [asdict(hit) for hit in result.hardcoded]
     order = getattr(result, "cache_order", None)
     if file_store and order is not None:
@@ -378,7 +459,7 @@ def _hardcoded_next_steps(
     high_med = int(counts.get("high") or 0) + int(counts.get("medium") or 0)
     if not cfg.scan_adapter:
         next_steps.append({
-            "cmd": f"# set [scan] adapter + src_dirs in .llm-localize.toml",
+            "cmd": "# set [scan] adapter + src_dirs in .llm-localize.toml",
             "why": "No scanner configured",
         })
         return next_steps
@@ -437,7 +518,7 @@ def _hardcoded_next_steps(
                 "cmd": (
                     "python experiments/hardcoded_visible/crawl.py --no-serve"
                     if (cfg.root / "experiments" / "hardcoded_visible" / "crawl.py").is_file()
-                    else f"# browse /en-XX/app… on llm-localizator web"
+                    else "# browse /en-XX/app… on llm-localizator web"
                 ),
                 "why": "Static clear — run visual leftover hunt",
             })
@@ -508,8 +589,11 @@ def scan_cache_status(cfg: ProjectConfig, *, max_age: float = 0.0) -> dict:
     adapter = cfg.scan_adapter
     if adapter and cfg.scan_src_dirs:
         try:
-            scanner = scanner_from_config(cfg, adapter)
-            stale = _fingerprint(cfg, scanner, adapter, cached.get("limit")) != cached["key"]
+            if _cache_still_fresh(cached, cfg, adapter):
+                stale = False
+            else:
+                scanner = scanner_from_config(cfg, adapter)
+                stale = _fingerprint(cfg, scanner, adapter, cached.get("limit")) != cached["key"]
         except ValueError:
             pass
     counts = {"high": 0, "medium": 0, "low": 0}
@@ -534,17 +618,29 @@ def scan_cache_status(cfg: ProjectConfig, *, max_age: float = 0.0) -> dict:
     return out
 
 
-def cached_hit_rows(cfg: ProjectConfig) -> dict:
-    """Every hit of the last stored scan with its decision id and status; never scans (W5 findings page).
+DEFAULT_HIT_PAGE = 500
+
+
+def cached_hit_rows(
+    cfg: ProjectConfig,
+    *,
+    offset: int = 0,
+    limit: int | None = DEFAULT_HIT_PAGE,
+    confidence: str | None = None,
+) -> dict:
+    """Hits of the last stored scan with decision ids; never scans (W5 findings page).
 
     ``id`` is :func:`hit_id` (file + text), the id ``scan-decide`` takes. Ignored hits stay in the list so the page can
-    show and reset them.
+    show and reset them. ``limit`` defaults to :data:`DEFAULT_HIT_PAGE`; pass ``limit=None`` for every hit.
     """
     from ..catalog.scan_decisions import ScanDecisions, hit_id
 
     cached = _load_cache(cfg)
     if cached is None:
-        return {"cached": False, "ts": None, "hits": [], "filesScanned": 0}
+        return {
+            "cached": False, "ts": None, "hits": [], "filesScanned": 0,
+            "total": 0, "filteredTotal": 0, "offset": 0, "limit": limit,
+        }
     decided = ScanDecisions.for_project(cfg).items()
     hits = []
     for raw in _cached_hits(cached):
@@ -553,7 +649,20 @@ def cached_hit_rows(cfg: ProjectConfig) -> dict:
         entry = decided.get(h["id"])
         h["decision"] = entry.get("status") if entry else None
         hits.append(h)
-    return {"cached": True, "ts": cached.get("ts"), "hits": hits, "filesScanned": cached.get("filesScanned", 0)}
+    total = len(hits)
+    if confidence and confidence != "all":
+        hits = [h for h in hits if (h.get("confidence") or "medium") == confidence]
+    filtered = len(hits)
+    start = max(0, int(offset or 0))
+    if limit is None:
+        page = hits[start:]
+    else:
+        page = hits[start:start + max(0, int(limit))]
+    return {
+        "cached": True, "ts": cached.get("ts"), "hits": page,
+        "filesScanned": cached.get("filesScanned", 0),
+        "total": total, "filteredTotal": filtered, "offset": start, "limit": limit,
+    }
 
 
 def _parse_llm(raw: str) -> tuple[list[dict], str | None]:
@@ -791,9 +900,13 @@ def op_agent_hardcoded(
     settings = ""
     file_store: dict = {}
     files: list[Path] = []
+    cache_meta: dict | None = None
     if not req.llm:
-        side = _side_files_digest(Path(cfg.root))
-        cache_key = _fingerprint(cfg, scanner, adapter, req.limit, side)
+        side_sigs = _collect_side_sigs(Path(cfg.root))
+        side = _digest_sigs(side_sigs)
+        cache_key, cache_meta = _fingerprint_with_meta(
+            cfg, scanner, adapter, req.limit, side, side_sigs=side_sigs,
+        )
         stored = None if req.refresh else _load_cache(cfg)
         settings = _settings_key(cfg, adapter, side)
         if stored and stored.get("settings") == settings and isinstance(stored.get("files"), dict):
@@ -805,11 +918,18 @@ def op_agent_hardcoded(
             )
             result.hardcoded = [HardcodedString(**hit) for hit in _cached_hits(stored)]
             cached_at = stored.get("ts")
+            # Refresh incremental meta even on a full cache hit so status can skip walks.
+            _save_cache(
+                cfg, cache_key, result, req.limit, settings=settings,
+                file_store=stored.get("files") if isinstance(stored.get("files"), dict) else file_store,
+                meta=cache_meta,
+            )
     if result is None:
         result, files = _scan_files(scanner, req.limit, file_store if cache_key else None)
         if cache_key is not None:
             _save_cache(
                 cfg, cache_key, result, req.limit, settings=settings, file_store=file_store,
+                meta=cache_meta,
             )
     if req.dry_run and req.llm:
         rels = [p.relative_to(cfg.root).as_posix() for p in files]

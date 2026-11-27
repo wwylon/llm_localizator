@@ -9,11 +9,39 @@ uv sync --extra dev
 uv run llm-localizator doctor
 ```
 
-## Tests
+On Windows prefer `uv run …` or `.\.venv\Scripts\python.exe …`. The Store/`WindowsApps`
+`python` stub and MSYS `python` often lack pytest and the editable install.
 
-The default run is hermetic: it needs no Ollama, no GPU, no network and no API key.
+### Optional: taskqueue (`tq`)
+
+Hermetic tests do **not** need `tq`. For real queue submits (`translate` without
+`--inline`, web **Submit to taskqueue**), install [tqdaemon](https://github.com/wwylon/tqdaemon)
+so `tq` is on PATH (doctor warns when it is missing):
 
 ```text
+# sibling checkout (house layout):
+uv pip install --python .venv/Scripts/python.exe -e ../tqdaemon
+# or from PyPI when published:
+# pip install tqdaemon
+uv run tq --help
+uv run llm-localizator doctor   # taskqueue check should be ok
+```
+
+Without `tq`, operator commands run in-process. Explicit web **Run locally**
+(`inline=true`) still needs `confirm=true`. Prefer-queue behaviour:
+[docs/taskqueue-integration.md](docs/taskqueue-integration.md).
+
+## Tests
+
+The default run is hermetic: it needs no Ollama, no GPU, no network, no API key,
+and no `tq` on PATH. The suite must pass with `tq_available() is False`. Tests
+that exercise the queue path stub
+`llm_localizator.projects.taskqueue.tq_available` to `True`.
+
+```text
+uv run python scripts/test_lane.py quick   # every edit
+uv run python scripts/test_lane.py full    # full hermetic suite (before scanner commits)
+# or:
 uv run pytest -q
 # faster, in parallel (needs pytest-xdist):
 uv run pytest -q -n auto --dist loadfile -m "not slow and not ollama and not live_bridge and not browser"

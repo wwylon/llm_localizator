@@ -192,6 +192,8 @@ def test_trailing_slash_normalizes_under_locale_prefix(shell_port: int) -> None:
     assert b'data-page="editor"' in body
 
 
+@pytest.mark.serial_web
+@pytest.mark.xdist_group("serial_web")
 def test_post_without_token_is_refused(shell_port: int) -> None:
     req = urllib.request.Request(
         f"http://127.0.0.1:{shell_port}/api/ops/status",

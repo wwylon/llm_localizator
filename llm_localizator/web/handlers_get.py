@@ -200,6 +200,8 @@ class GetRoutesMixin:
             model = cfg.model_for((cfg.targets or [""])[0])
         except ValueError:
             model = ""
+        from ..ops.approaches import APPROACHES
+
         return self._send({
             "sourceLocale": cfg.source_locale,
             "targets": list(cfg.targets),
@@ -209,6 +211,11 @@ class GetRoutesMixin:
             "catalogPath": cfg.catalog_path,
             "catalogFormats": canonical_formats(),
             "providerKind": cfg.provider.kind,
+            "approach": getattr(cfg, "translate_approach", None) or "",
+            "approaches": [
+                {"id": a.id, "title": a.title, "words": a.words, "when": a.when}
+                for a in APPROACHES
+            ],
         })
 
     def _get_messages(self, url, q, one):
@@ -316,13 +323,16 @@ class GetRoutesMixin:
         ns = one("namespace", "").strip() or None
         namespaces = ns_multi or ([ns] if ns else None)
         fmt = one("format", "csv").lower()
-        screenshots = one("screenshots", "") in ("1", "true", "yes")
+        flag = lambda name: one(name, "") in ("1", "true", "yes")  # noqa: E731
         try:
+            # Same options as `llm-localizator export` (CLI/web parity).
             body, ctype, filename, _report = render_export(
                 st.cfg, st.catalog, locales=locs, namespaces=namespaces,
                 fmt=fmt, layout=one("layout", "single") or "single",
-                only=one("only", "all") or "all", screenshots=screenshots,
+                only=one("only", "all") or "all", screenshots=flag("screenshots"),
                 file_count=one("files", "1") or "1",
+                xliff_version=one("xliff_version", "1.2") or "1.2",
+                bom=flag("bom"), approved_only=flag("approved_only"),
             )
         except ValueError as exc:
             return self._send({"error": str(exc)}, 400)
@@ -761,16 +771,34 @@ class GetRoutesMixin:
         ):
             return self._send({"ok": False, "error": "Not allowed"}, 403)
         status = scan_cache_status(st.cfg, max_age=3.0)
-        return self._send({"ok": True, **cached_hit_rows(st.cfg), "stale": status.get("stale", True),
+        try:
+            offset = int(one("offset", "0") or 0)
+        except ValueError:
+            offset = 0
+        conf = one("confidence", "") or None
+        lim_raw = one("limit", "")
+        kwargs = {"offset": offset, "confidence": conf}
+        if lim_raw == "all":
+            kwargs["limit"] = None
+        elif lim_raw:
+            try:
+                kwargs["limit"] = int(lim_raw)
+            except ValueError:
+                pass  # keep default page size
+        rows = cached_hit_rows(st.cfg, **kwargs)
+        return self._send({"ok": True, **rows, "stale": status.get("stale", True),
                            "counts": status.get("counts", {})})
 
     def _get_queue(self, url, q, one):
         """Blueprint tasks and their taskqueue status (W3). Read-only: the DB opens with mode=ro."""
+        from ..ops.permissions import ROLE_ADMIN, ROLE_DEVELOPER
         from ..ops.queue import queue_payload
 
         st = self._state(one("project", self.default_project))
         actor = self._actor(st.cfg)
         if actor.kind == "anonymous":
+            return self._send({"ok": False, "error": "Not allowed"}, 403)
+        if actor.kind != "token_admin" and actor.role not in (ROLE_ADMIN, ROLE_DEVELOPER):
             return self._send({"ok": False, "error": "Not allowed"}, 403)
         return self._send(queue_payload(st.cfg))
 
@@ -1018,13 +1046,15 @@ class GetRoutesMixin:
         locale = one("locale", "en")
         if self._locale_guard([locale], allow_anonymous=True):
             return
-        if bundle_mode == "web-ui":
-            st = self._state(one("project", self.default_project))
-            return self._send(
-                translator_bundle_web_ui(locale, state_root=st.cfg.state_root())
-            )
         st = self._state(one("project", self.default_project))
-        return self._send(translator_bundle(st, locale))
+        try:
+            if bundle_mode == "web-ui":
+                payload = translator_bundle_web_ui(locale, state_root=st.cfg.state_root())
+            else:
+                payload = translator_bundle(st, locale)
+        except ValueError as exc:
+            return self._send({"ok": False, "error": str(exc)}, 400)
+        return self._send(payload)
 
     def _get_translator_config(self, url, q, one):
         from .translator import translator_config, translator_config_web_ui

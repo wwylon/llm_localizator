@@ -122,11 +122,18 @@ class BudgetStore:
             return hold_id
 
     def release(self, hold_id: str | None) -> None:
-        """Drop an unused (or leftover) reservation."""
+        """Drop an unused (or leftover) reservation.
+
+        A corrupt ledger must not raise out of ``finally: release`` paths and
+        must not rewrite ``spend.json`` as ``{}`` (that would erase history).
+        """
         if not hold_id:
             return
         with self._ledger():
-            data = self._load(strict=True)
+            try:
+                data = self._load(strict=True)
+            except RuntimeError:
+                return
             key = self._month_key()
             row = data.get(key)
             if not isinstance(row, dict):

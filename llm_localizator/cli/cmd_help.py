@@ -7,7 +7,7 @@ import sys
 
 from ..help import guide_path, guide_text
 
-__all__ = ["run_help", "run_skill", "run_set", "run_review_risk", "run_cycle", "run_onboard", "run_context_propose", "run_context_note", "run_server_copy",
+__all__ = ["run_help", "run_skill", "run_set", "run_review_risk", "run_normalize", "run_report", "run_cycle", "run_onboard", "run_context_propose", "run_context_note", "run_server_copy",
            "run_glossary_learn", "run_import_review"]
 
 
@@ -37,9 +37,20 @@ def run_help(args: argparse.Namespace) -> int:
             sys.stdout.buffer.write(text.encode("utf-8"))
         return 0
     if not args.guide:
-        print("usage: llm-localizator help {human,agent} [--path] [--code TOPIC | --lang CODE | --topics] | --regenerate",
-              file=sys.stderr)
+        print(
+            "usage: llm-localizator help {human,agent} [--path] [--print-steps] "
+            "[--code TOPIC | --lang CODE | --topics] | --regenerate",
+            file=sys.stderr,
+        )
         return 2
+    if getattr(args, "print_steps", False):
+        if args.guide != "agent":
+            print("help: --print-steps is only for the agent guide", file=sys.stderr)
+            return 2
+        from ..help import format_agent_steps
+
+        sys.stdout.write(format_agent_steps())
+        return 0
     if args.path:
         print(guide_path(args.guide))
         return 0
@@ -57,8 +68,7 @@ def run_skill(args: argparse.Namespace) -> int:
 
     cfg = resolve(args.project, args.config)
     result = op_skill(cfg, args.action, force=bool(getattr(args, "force", False)))
-    print(result.summary)
-    return result.exit_code
+    return _print_result(result)
 
 
 def run_set(args: argparse.Namespace) -> int:
@@ -72,6 +82,37 @@ def run_set(args: argparse.Namespace) -> int:
     for line in result.lines:
         print(line)
     return result.exit_code
+
+
+def run_report(args: argparse.Namespace) -> int:
+    from ..ops.report import op_report
+    from ..projects import resolve
+
+    cfg = resolve(args.project, args.config)
+    result = op_report(cfg, fmt=args.fmt, locales=args.locales, out=args.out,
+                       review_limit=args.review_limit)
+    text = (result.data.get("text") or "") if not args.out else f"{result.summary}\nwrote {args.out}\n"
+    try:
+        sys.stdout.write(text)
+    except UnicodeEncodeError:
+        sys.stdout.buffer.write(text.encode("utf-8"))
+    return result.exit_code
+
+
+def run_normalize(args: argparse.Namespace) -> int:
+    import json
+
+    from ..ops.normalize_existing import op_normalize
+    from ..projects import resolve
+
+    cfg = resolve(args.project, args.config)
+    result = op_normalize(
+        cfg, locales=args.locales, namespaces=args.namespaces, write=args.write, steps=args.steps,
+    )
+    if args.fmt == "json":
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return result.exit_code
+    return _print_result(result)
 
 
 def run_review_risk(args: argparse.Namespace) -> int:

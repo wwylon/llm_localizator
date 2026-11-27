@@ -144,16 +144,9 @@ class HistoryStore:
             return [latest] if latest is not None else []
         sk = state_key(namespace, key)
         out: list[HistoryEvent] = []
-        path = self.path_for(locale)
-        if not path.exists():
-            return out
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            parsed = _parse_history_line(line, HistoryEvent.__dataclass_fields__)
-            if parsed is not None and parsed[0] == sk:
-                out.append(parsed[1])
+        for got_sk, event, _raw in self.iter_events(locale):
+            if got_sk == sk:
+                out.append(event)
         if limit is not None and limit > 0:
             return out[-limit:]
         return out
@@ -202,21 +195,25 @@ class HistoryStore:
         by_key: dict[str, list[tuple[int, str, str]]] = defaultdict(list)
         total = 0
         seq = 0
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            total += 1
-            try:
-                raw = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(raw, dict):
-                continue
-            sk = state_key(str(raw.get("namespace") or ""), str(raw.get("key") or ""))
-            ts = str(raw.get("ts") or "")
-            by_key[sk].append((seq, ts, line))
-            seq += 1
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    total += 1
+                    try:
+                        raw = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(raw, dict):
+                        continue
+                    sk = state_key(str(raw.get("namespace") or ""), str(raw.get("key") or ""))
+                    ts = str(raw.get("ts") or "")
+                    by_key[sk].append((seq, ts, line))
+                    seq += 1
+        except OSError:
+            return
         retained: list[tuple[int, str, str]] = []
         for rows in by_key.values():
             retained.extend(rows[-self.retention :])

@@ -2509,5 +2509,11 @@
   "gl_export_failed": "export failed",
   "gl_import_failed": "import failed",
   "gl_save_failed": "save failed",
-  "tm_export_failed": "Export failed"
+  "tm_export_failed": "Export failed",
+  "hc_load_more": "Load more",
+  "setup_step_approach": "How to translate",
+  "setup_approach_title": "How should strings get translated?",
+  "setup_approach_help": "This records [translate] approach in the project config. You can change it later with llm-localizator approach --set.",
+  "setup_approach_missing": "Approach list did not load.",
+  "setup_sum_approach": "Approach"
 }

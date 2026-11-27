@@ -102,6 +102,7 @@ def op_onboard(
               f"  llm-localizator guide {cfg.name}",
               f"  llm-localizator check-keys {cfg.name}",
               f"  llm-localizator glossary-propose {cfg.name}   # confirm product terms before translating",
+              f"  llm-localizator translate {cfg.name} --sample layout   # small layout-check set (zh/ar frozen)",
               f"  llm-localizator cycle {cfg.name}",
               f"  llm-localizator skill install {cfg.name}   # optional: the agent guide as a Claude skill "
               "in this repo (writes .claude/skills/)",

@@ -81,8 +81,12 @@ def test_log_heartbeat_emits_during_slow_work(capsys) -> None:
 
     from llm_localizator.reporting import log_heartbeat
 
-    # Ten intervals of slack: a loaded CI box can delay the heartbeat thread.
+    # Stop as soon as the first heartbeat lands (usually ~0.05 s); the 5 s
+    # deadline only absorbs a loaded CI box delaying the heartbeat thread.
+    seen = ""
     with log_heartbeat("test work", interval_s=0.05):
-        time.sleep(0.5)
-    out = capsys.readouterr().out
-    assert "still test work" in out
+        deadline = time.monotonic() + 5.0
+        while "still test work" not in seen and time.monotonic() < deadline:
+            time.sleep(0.01)
+            seen += capsys.readouterr().out
+    assert "still test work" in seen

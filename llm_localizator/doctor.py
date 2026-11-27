@@ -281,13 +281,37 @@ def run_doctor(
         try:
             from .catalog.store_metadata import store_metadata_gaps
 
-            for gap in store_metadata_gaps(cfg.root, cfg.source_locale):
+            for gap in store_metadata_gaps(
+                cfg.root, cfg.source_locale, expect_locales=list(cfg.targets or []),
+            ):
+                if gap.absent_locales:
+                    checks.append(Check(
+                        "store-text", "warn",
+                        f"{gap.folder}: no store locale folder for "
+                        f"{', '.join(gap.absent_locales[:6])} "
+                        f"(source listing is in {gap.source})",
+                    ))
                 files = list(gap.missing)
-                example = files[0]
+                if files:
+                    example = files[0]
+                    checks.append(Check(
+                        "store-text", "warn",
+                        f"{gap.folder}: {len(files)} store file(s) only in {gap.source}, e.g. {example} "
+                        f"(missing in {', '.join(gap.missing[example][:4])})",
+                    ))
+        except OSError:
+            pass
+
+        try:
+            from .projects.init_layout import fluent_paths
+
+            ftl = fluent_paths(cfg.root)
+            if ftl:
                 checks.append(Check(
-                    "store-text", "warn",
-                    f"{gap.folder}: {len(files)} store file(s) only in {gap.source}, e.g. {example} "
-                    f"(missing in {', '.join(gap.missing[example][:4])})",
+                    "fluent", "warn",
+                    f"found {len(ftl)} Fluent .ftl file(s) (e.g. {ftl[0]}) but there is no "
+                    "Fluent catalogue adapter yet — keep using your configured [catalog] format, "
+                    "or convert to a supported layout",
                 ))
         except OSError:
             pass

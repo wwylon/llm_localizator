@@ -88,6 +88,11 @@ ICU is the interchange model, so validation and prompts see one shape whatever i
 | Topic | Doc |
 |-------|-----|
 | First project, step by step | [docs/getting-started.md](docs/getting-started.md) |
+| The words the docs use | [docs/concepts.md](docs/concepts.md) |
+| Project that already has translations | [docs/existing-project.md](docs/existing-project.md) |
+| Something went wrong | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| Cloud cost and budget | [docs/cost-and-budget.md](docs/cost-and-budget.md) |
+| Exit codes (scripts and CI) | [docs/exit-codes.md](docs/exit-codes.md) |
 | Every command and flag | [docs/cli.md](docs/cli.md) |
 | `.llm-localize.toml` reference | [docs/configuration.md](docs/configuration.md) |
 | Hardcoded-string scanner | [docs/scanners.md](docs/scanners.md) |
@@ -119,3 +124,10 @@ hermetic (no model, no GPU, no network): `uv run pytest`.
 ## License
 
 [MIT](LICENSE)
+
+## Verify
+
+```bash
+uv run pytest
+```
+

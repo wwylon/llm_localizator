@@ -442,25 +442,35 @@ def test_pre_translate_skips_score_and_matches_filter(
     assert [row["key"] for row in payload["rows"]] == ["greet"]
 
 
+#: CI docs may only show commands that need no model and no network (read-only checks).
+_CI_SAFE = ("validate", "report")
+
+
 @pytest.mark.slow
 def test_ci_doc_invokes_validate_only() -> None:
     text = Path("docs/ci.md").read_text(encoding="utf-8")
     fences = re.findall(r"```[^\n]*\n(.*?)```", text, re.S)
     assert len(fences) >= 2
-    proc = subprocess.run(
-        [sys.executable, "-m", "llm_localizator", "validate", "--help"],
-        capture_output=True, text=True, check=False,
-    )
-    assert proc.returncode == 0
-    help_text = proc.stdout + proc.stderr
+    helps: dict[str, str] = {}
+    for name in _CI_SAFE:
+        proc = subprocess.run(
+            [sys.executable, "-m", "llm_localizator", name, "--help"],
+            capture_output=True, text=True, check=False,
+        )
+        assert proc.returncode == 0
+        helps[name] = proc.stdout + proc.stderr
     found = False
     for fence in fences:
         assert "impact" not in fence
-        for invocation in re.findall(r"llm-localizator[ \t]+\S+", fence):
+        for line in fence.splitlines():
+            match = re.search(r"llm-localizator[ \t]+(\S+)(.*)", line)
+            if not match:
+                continue
             found = True
-            assert invocation.split()[1] == "validate"
-        for flag in re.findall(r"--[A-Za-z0-9][\w-]*", fence):
-            assert flag in help_text
+            command, rest = match.group(1), match.group(2)
+            assert command in _CI_SAFE, f"CI doc shows `{command}`, which is not a read-only check"
+            for flag in re.findall(r"--[A-Za-z0-9][\w-]*", rest):
+                assert flag in helps[command], f"{command} has no {flag}"
     assert found
 
 

@@ -11,8 +11,10 @@ __all__ = [
     "SCHEMA_VERSION",
     "REASONS",
     "SOURCES",
+    "CRAWL_KIND_TO_REASON",
     "VisualFinding",
     "VisualFindingsError",
+    "crawl_kind_to_reason",
     "parse_finding",
     "iter_findings",
     "default_findings_path",
@@ -24,6 +26,7 @@ REASONS = frozenset({
     "layout_overflow",
     "layout_clip",
     "layout_heuristic",
+    "layout_overlap",
     "en_leak",
     "icu_leak",
     "glossary",
@@ -36,6 +39,18 @@ SOURCES = frozenset({
     "tq-smoke",
     "manual",
 })
+
+#: ``layout.json`` issue ``kind`` → visual-findings ``reason`` (ADR-119 / TiMi overlap).
+CRAWL_KIND_TO_REASON = {
+    "clipped": "layout_clip",
+    "offscreen": "layout_overflow",
+    "overlap": "layout_overlap",
+}
+
+
+def crawl_kind_to_reason(kind: str) -> str | None:
+    """Map a QA-crawl layout ``kind`` to a findings reason, or ``None`` if unknown."""
+    return CRAWL_KIND_TO_REASON.get(str(kind or "").strip().lower())
 
 
 class VisualFindingsError(ValueError):

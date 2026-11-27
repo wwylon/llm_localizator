@@ -20,7 +20,7 @@ from ..catalog.tm import edit_similarity
 from ..core.standards import get_standard
 from ..core.validate import check_max_chars, validate_translation
 from ..pipeline.recording import provenance_stores, record_candidate
-from ..projects import ContextNotes, GlossaryCache, ProjectConfig
+from ..projects import ContextNotes, ProjectConfig
 from .types import ApplyNearRequest, OpResult
 
 __all__ = ["op_apply_near"]
@@ -61,10 +61,7 @@ def op_apply_near(cfg: ProjectConfig, req: ApplyNearRequest) -> OpResult:
 
     stores = provenance_stores(cfg)
     notes = ContextNotes(cfg.context_dir)
-    glossary_cache = GlossaryCache(
-        cfg.glossary_path, shared=list(getattr(cfg, "glossary_shared", []) or []),
-        conflict=getattr(cfg, "glossary_conflict", "own"),
-    )
+    glossary_cache = cfg.glossary_cache()
     standard = get_standard(getattr(cfg, "catalog_standard", None))
     threshold = req.min_similarity
     found: list[dict] = []

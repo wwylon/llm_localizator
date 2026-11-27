@@ -66,6 +66,52 @@ def test_validation_rejects_unknown_and_bad_cond() -> None:
         normalize_script([{"type": "if", "field": "locale", "op": "ge", "value": 1}])
 
 
+def test_hardcoded_field_is_a_valid_if_cond() -> None:
+    script = normalize_script([
+        {"type": "if", "field": "hardcoded", "op": "ge", "value": 1,
+         "then": [{"type": "review_ticket"}], "else": [{"type": "stop"}]},
+    ])
+    assert script[0]["field"] == "hardcoded"
+
+
+def test_findings_field_is_a_valid_if_cond() -> None:
+    script = normalize_script([
+        {"type": "if", "field": "findings", "op": "ge", "value": 1,
+         "then": [{"type": "flag"}], "else": [{"type": "verify"}]},
+    ])
+    assert script[0]["field"] == "findings"
+
+
+def test_validate_findings_branch_flags_only_bad_keys(tmp_path, monkeypatch) -> None:
+    from llm_localizator.ops.types import OpResult
+
+    cfg = _project(tmp_path)
+    script = [
+        {"type": "validate"},
+        {"type": "if", "field": "findings", "op": "ge", "value": 1,
+         "then": [{"type": "flag"}], "else": [{"type": "verify"}]},
+    ]
+    assert save_workflows(cfg, workflows={"w": {"script": script}})["ok"]
+    cfg = load_config(cfg.config_path)
+
+    def fake_validate(_cfg, _req, **_kw):
+        return OpResult(
+            ok=True, exit_code=0, command="validate", summary="1 finding",
+            lines=[], data={"findings": [
+                {"locale": "pl", "namespace": "app", "key": "lo", "check": "V1", "severity": "error"},
+            ]},
+        )
+
+    monkeypatch.setattr("llm_localizator.ops.validate.op_validate", fake_validate)
+    res = op_workflow_run(
+        cfg, WorkflowRequest(name="w", route_only=True, locales=["pl"], namespace="app"),
+    )
+    assert res.ok
+    assert int(res.data.get("flagged") or 0) == 1
+    assert int(res.data.get("verified") or 0) == 2
+
+
+
 def test_validation_caps() -> None:
     deep = [{"type": "stop"}]
     for _ in range(MAX_DEPTH + 1):
@@ -437,3 +483,58 @@ def test_validate_block_passes_keys_through(tmp_path) -> None:
     assert res.ok
     assert res.data["validated"] == 3
     assert res.data["verified"] == 1
+
+
+def test_prune_keeps_active_runs(tmp_path) -> None:
+    """Terminal prune must never delete waiting/running records (T0.1)."""
+    cfg = _project(tmp_path)
+    runs = wr._runs_dir(cfg)
+    runs.mkdir(parents=True, exist_ok=True)
+    waiting_id = "wf_20261123T120000_aabbcc"
+    for i in range(wr.KEEP_RUNS + 5):
+        rid = f"wf_20261123T{i:06d}_term{i:02d}"
+        (runs / f"{rid}.json").write_text(json.dumps({
+            "id": rid, "status": "done", "frontier": [], "stats": {}, "counts": {},
+        }), encoding="utf-8")
+    (runs / f"{waiting_id}.json").write_text(json.dumps({
+        "id": waiting_id, "status": "waiting",
+        "frontier": [{"pos": [0], "keys": [], "wait": {"tasks": ["t1"], "kind": "rescore", "at": "x"}}],
+        "stats": {}, "counts": {},
+    }), encoding="utf-8")
+    wr._prune_old_runs(cfg)
+    assert (runs / f"{waiting_id}.json").is_file()
+    terminal = [p for p in runs.glob("wf_*.json") if p.stem != waiting_id]
+    assert len(terminal) <= wr.KEEP_RUNS
+
+
+def test_resume_stalled_running(tmp_path, monkeypatch) -> None:
+    """A kill mid-advance leaves status=running; resume must continue (T0.2)."""
+    cfg = _project(tmp_path)
+    monkeypatch.setattr(wr, "tq_available", lambda: False)
+    assert save_workflows(cfg, workflows={"w": {"script": [
+        {"type": "flag"}, {"type": "review_ticket"},
+    ]}})["ok"]
+    cfg = load_config(cfg.config_path)
+    from llm_localizator.ops.workflow import get_workflow
+    spec = get_workflow(cfg, "w")
+    rid = "wf_20261123T130000_stall1"
+    # Mid-run checkpoint: first terminal block still pending on the frontier.
+    wr._save_run(cfg, {
+        "id": rid,
+        "workflow": "w",
+        "status": "running",
+        "dryRun": False,
+        "useQueue": False,
+        "scope": {"locales": ["pl"], "namespace": "app", "namespaces": None},
+        "frontier": [{"pos": [0], "keys": None, "wait": None}],
+        "counts": {},
+        "stats": {},
+        "lines": [],
+        "message": "",
+        "started": "2026-11-23T13:00:00Z",
+        "finished": None,
+    })
+    res = wr.resume_run(cfg, spec, rid)
+    assert res is not None and res.ok
+    assert wr.load_run(cfg, rid)["status"] == "done"
+    assert len(ReviewQueue(cfg.review_root()).list_tickets("pl")) == 3

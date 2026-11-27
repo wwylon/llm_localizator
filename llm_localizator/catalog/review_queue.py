@@ -15,6 +15,11 @@ from pathlib import Path
 from .io import append_text_line, rewrite_text_locked
 from .state import now_iso, state_key
 
+import re
+
+# Locale is a file-name component under the review dir; never a path.
+_SAFE_LOCALE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
 __all__ = [
     "open_review_queue",
     "ReviewTicket",
@@ -99,6 +104,8 @@ class ReviewQueue:
         return (st.st_mtime_ns, st.st_size)
 
     def path_for(self, locale: str) -> Path:
+        if not isinstance(locale, str) or not _SAFE_LOCALE.fullmatch(locale) or ".." in locale:
+            raise ValueError(f"invalid locale: {locale!r}")
         return self.dir / f"{locale}.jsonl"
 
     def _load(self, locale: str) -> list[ReviewTicket]:

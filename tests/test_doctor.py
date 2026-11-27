@@ -122,9 +122,9 @@ def test_doctor_cli_json(project_root, make_config, capsys) -> None:
     make_config(project_root)
     config_path = project_root / ".llm-localize.toml"
     config_path.write_text(
-        f'[project]\nname = "testproj"\n\n[catalog]\n'
-        f'path = "messages/{{locale}}/{{namespace}}.json"\n\n'
-        f'[locales]\ntargets = ["pl"]\n',
+        '[project]\nname = "testproj"\n\n[catalog]\n'
+        'path = "messages/{locale}/{namespace}.json"\n\n'
+        '[locales]\ntargets = ["pl"]\n',
         encoding="utf-8",
     )
     args = argparse.Namespace(

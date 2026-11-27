@@ -26,7 +26,23 @@ def seed_scan_cache(cfg, hits: list[dict]) -> None:
 def test_no_cache_is_an_empty_state(tmp_path: Path) -> None:
     (tmp_path / ".llm-localize.toml").write_text(BASE, encoding="utf-8")
     cfg = load_config(tmp_path / ".llm-localize.toml")
-    assert cached_hit_rows(cfg) == {"cached": False, "ts": None, "hits": [], "filesScanned": 0}
+    out = cached_hit_rows(cfg)
+    assert out["cached"] is False and out["hits"] == [] and out["total"] == 0
+
+
+def test_hits_are_paged(tmp_path: Path) -> None:
+    (tmp_path / ".llm-localize.toml").write_text(BASE, encoding="utf-8")
+    cfg = load_config(tmp_path / ".llm-localize.toml")
+    hits = [
+        {"file": f"src/{i}.js", "line": 1, "text": f"T{i}", "confidence": "high" if i < 3 else "low"}
+        for i in range(6)
+    ]
+    seed_scan_cache(cfg, hits)
+    page = cached_hit_rows(cfg, offset=0, limit=2, confidence="high")
+    assert page["total"] == 6 and page["filteredTotal"] == 3
+    assert len(page["hits"]) == 2 and page["hits"][0]["text"] == "T0"
+    page2 = cached_hit_rows(cfg, offset=2, limit=2, confidence="high")
+    assert len(page2["hits"]) == 1
 
 
 def test_hits_carry_decision_ids(tmp_path: Path) -> None:

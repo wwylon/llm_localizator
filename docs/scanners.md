@@ -80,8 +80,9 @@ clicks. Then `llm-localizator hardcoded-hunt <project>` (or
   source (server or API text, runtime-assembled strings). The static scanner
   cannot see these, so they are the crawl's own findings;
 - `layout.json` and `<locale>/*.png`: per layout locale (default ar/zh), whether
-  `dir` is right and which text elements are clipped or off screen, with a
-  full-page screenshot per page.
+  `dir` is right and which text elements are clipped, off screen, or overlapping
+  another text box, with a full-page screenshot per page. Crawl kinds map to
+  visual-findings reasons via `crawl_kind_to_reason` (`overlap` → `layout_overlap`).
 
 `hardcoded-hunt` does not start the consumer's server unless you pass `--serve`.
 Without `[qa]`, the older flags still work
@@ -427,6 +428,7 @@ Known limits:
 | v55 | M2 rest: one per-file routine for `scan` and `agent-hardcoded` (same `t_functions`, relative paths, directives on every file, duplicate `(line, text)` dropped, delegates inherit `[scan]` settings, per-scan caches reset); scan-cache key covers side files (`go.mod`, `package.json`, `.strings`/`.xcstrings`, `project.pbxproj`, `Info.plist`); innermost UI sink before a literal; Mustache `{{name}}` at end of line is a slot; short Svelte/Vue expressions lose their braces; PHP code is not read as HTML; char literals (`'"'`) open no string in Go/C#/Rust; embedded-markup hits get their own line in triple-quoted strings; Markdown content dirs judged below the root; coverage counts only scanned files; log calls ignore parentheses in strings; JS call stack pops only a matching bracket; a full `UI_CALLS` callee beats a non-UI last segment; multi-line MDX `export`; L26–L31 (locale-table keys, `promptText`, apostrophes in `textContent`/`createTextNode`/dialogs, `el()` third-arg concat, `.HTML`) |
 | v56 | M4 speed, identical hits on all 146 dev projects: relative paths by string prefix instead of `Path.relative_to`, `path_is_skipped` memoised per walk, lexers and the JS tokenizer jump to the next character that can start a token, one `ast.parse` per Python module, cached `is_prose`, no `resolve()` per file; about a third less scan CPU |
 | v57 | Plain-text templates drop `key: {{ value }}` lines with a lowercase key (a machine-readable record such as patchman's `report.txt`); `Reported by: {{ name }}` is still reported |
+| v71 | Apple `project.pbxproj` walk skips the same hard `SKIP_DIR_PARTS` as the main scanner (plus catalogue skip dirs), case-insensitively — avoids descending into `node_modules` / build trees when indexing Xcode targets |
 | v70 | JS: a lowercase severity word (`err`, `info`, `warn`, `success` …) passed as the second or later argument of a toast or notify call is not copy (`showToast(msg, 'err')`). Found on tqdaemon, where about 25 hits were this. No held-out measurement was made for this change, so no precision or recall figure is claimed for it |
 | v69 | Python desktop projects: a formatted message (an f-string that starts with a capitalised word and holds a placeholder, such as `f"Error: {exc}"` or `f"Chapters ({n})"`) is screen text unless it is a log or print argument, a URL, a query or a path. Written from the pool H to L Python misses, so those pools are development data |
 | v68 | Python: strings inside `re.compile`/`re.sub`/`re.search`... calls and in tuples that pair a pattern with its replacement are developer text, whatever script they are written in; a dict keyed by language codes (`{"en": {...}, "fa": {...}}`) is the project's own catalogue, read through its own lookup. Java: a project's output-pane helpers (`appendProgress("...")`, `appendOutput`, `appendConsole`) and `showAlert`/`showDialog`/`showConfirm`-style helpers (first argument). Written from pool L misses, so pool L is development data from here on (pool M will be the fresh check) |

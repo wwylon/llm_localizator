@@ -16,8 +16,13 @@ The PyPI distribution is `llm_localizator` (`llm-localize` on PyPI is an unrelat
 
 Optional extras: `[hyphens]` (soft hyphens), `[dev]` (pytest).
 
-> **Windows.** Prefer the project venv (`.\.venv\Scripts\python.exe -m llm_localizator.cli.main …`)
-> or `py -3.12`. MSYS `python` on PATH often has no pip/pytest.
+> **Windows.** Prefer `uv run …` or the project venv (`.\.venv\Scripts\python.exe -m llm_localizator.cli.main …`).
+> The Store/`WindowsApps` `python` stub and MSYS `python` often have no pip/pytest.
+
+For long GPU runs, install [tqdaemon](https://github.com/wwylon/tqdaemon) so `tq` is on PATH
+(`uv pip install -e ../tqdaemon` in a sibling checkout, or `pip install tqdaemon`).
+Without it, `translate` still runs in this terminal — see
+[taskqueue-integration.md](taskqueue-integration.md).
 
 ## 2. Install Ollama (required for local translation)
 

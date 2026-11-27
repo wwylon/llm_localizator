@@ -3,7 +3,7 @@
 > Localisation engine for app message catalogues: finds hardcoded UI strings, translates with
 > local (Ollama) or cloud LLMs (Claude Haiku, DeepSeek, OpenAI), validates placeholders and
 > plurals, and gives human reviewers a local web UI. CLI `llm-localizator`, PyPI `llm_localizator`.
-> Not related to the `llm-localizator` package on PyPI.
+> Prefer `llm-localizator help agent`: it prints the guide that matches the installed version.
 
 ## Start here
 
@@ -13,6 +13,8 @@
 - CLI reference: https://github.com/wwylon/llm_localizator/blob/main/docs/cli.md
 - Configuration (`.llm-localize.toml`): https://github.com/wwylon/llm_localizator/blob/main/docs/configuration.md
 - Agent workflow: https://github.com/wwylon/llm_localizator/blob/main/docs/agents.md
+- Agent contract (JSON envelope, exit codes, safe vs ask-first commands): https://github.com/wwylon/llm_localizator/blob/main/docs/agent-contract.md
+- Troubleshooting (by error message): https://github.com/wwylon/llm_localizator/blob/main/docs/troubleshooting.md
 - Hardcoded-string scanner: https://github.com/wwylon/llm_localizator/blob/main/docs/scanners.md
 
 ## Hard rules for agents

@@ -162,9 +162,53 @@ Record in REPORT / LEDGER (by locale, content type, model, prompt/context versio
 Gold-set calibration (publish/review/retranslate P/R) is a maintainer
 exercise: expand a labelled set before treating judge thresholds as measured.
 
+## Disambiguation slice (ADR-159)
+
+Short UI labels are ambiguous without role/siblings. The frozen corpus
+`llm_localizator/pipeline/bakeoff_disambiguation.json` holds 1–2 word English
+snippets with intended sense in `context`. Run it separately from catalogue
+sampling:
+
+```bash
+llm-localizator bakeoff --slice disambiguation --locales pl --models hy-mt3:1.8b,aya-expanse:8b --dry-run
+llm-localizator run-bakeoff --slice disambiguation --locales pl --models hy-mt3:1.8b,aya-expanse:8b
+```
+
+`REPORT.md` records `slice \`disambiguation\``. Prefer LQS/judge when
+`judge_model` is set; otherwise BT + contradiction signals (ADR-125). Do not
+change `[locales.models]` without a Winner note (ADR-12).
+
+## Hy-MT3 (Tencent) candidate
+
+Built-in engine id: **`local-hy-mt3-1.8b`** (status `unbenchmarked` until a
+dated bakeoff Winner). Weights: [Hy-MT3-1.8B-GGUF](https://huggingface.co/tencent/Hy-MT3-1.8B-GGUF).
+There is no official Ollama library tag yet — create a local Modelfile from the
+GGUF, e.g.:
+
+```text
+FROM ./Hy-MT3-1.8B-Q4_K_M.gguf
+PARAMETER temperature 0.7
+PARAMETER top_p 0.6
+PARAMETER top_k 20
+PARAMETER repeat_penalty 1.05
+```
+
+```bash
+ollama create hy-mt3:1.8b -f Modelfile
+# then bakeoff against the incumbent (never candidate-only):
+llm-localizator bakeoff --matrix --locales pl --models hy-mt3:1.8b,aya-expanse:8b
+```
+
+Use `--engine local-hy-mt3-1.8b` for a one-run overlay, or
+`llm-localizator engine apply local-hy-mt3-1.8b` **only after**
+`experiments/quality_bakeoff/REPORT.md` names Hy-MT3 Winner (ADR-12). The
+engine sets `[prompt] family = "mt_chat"`. Do not edit dogfood
+`[locales.models]` from this checklist alone.
+
 ## Non-goals
 
 - Auto-switching models on reject
 - Per-Ollama-tag prompt files
 - Evaluating CT2 via Ollama `--models` (CT2 is outside the public bakeoff
   matrix; use `[provider]` / `--ct2-path` for production)
+- Shipping Hy-MT3 weights inside the package or calling Tencent APIs

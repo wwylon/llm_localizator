@@ -1,4 +1,4 @@
-"""Every inline LLM op needs confirm; dry runs and queued runs do not (M0, audit ops #14)."""
+"""Explicit inline LLM ops need confirm; dry runs, queued runs, and no-tq default do not."""
 
 from __future__ import annotations
 
@@ -14,10 +14,16 @@ def _no_taskqueue(monkeypatch):
     monkeypatch.setattr(taskqueue, "tq_available", lambda: False)
 
 
-@pytest.mark.parametrize("cmd", ["review", "rescore", "documents", "bakeoff"])
-def test_inline_llm_op_without_confirm_is_refused(cmd) -> None:
-    out = dispatch_cmds._spend_gate(cmd, {})
+@pytest.mark.parametrize("cmd", ["review", "rescore", "documents", "bakeoff", "translate"])
+def test_explicit_inline_without_confirm_is_refused(cmd) -> None:
+    out = dispatch_cmds._spend_gate(cmd, {"inline": True})
     assert out and out["ok"] is False and "confirm" in out["error"]
+
+
+@pytest.mark.parametrize("cmd", ["review", "rescore", "documents", "bakeoff", "translate"])
+def test_no_tq_default_runs_without_confirm(cmd) -> None:
+    """Without taskqueue the operator path is local — same as the CLI."""
+    assert dispatch_cmds._spend_gate(cmd, {}) is None
 
 
 def test_confirm_dry_run_and_queue_pass(monkeypatch) -> None:
@@ -27,6 +33,7 @@ def test_confirm_dry_run_and_queue_pass(monkeypatch) -> None:
 
     monkeypatch.setattr(taskqueue, "tq_available", lambda: True)
     assert dispatch_cmds._spend_gate("rescore", {"submit": True}) is None
+    assert dispatch_cmds._spend_gate("rescore", {"inline": True}) is not None
 
 
 def test_hardcoded_llm_judge_has_no_queue_escape(monkeypatch) -> None:

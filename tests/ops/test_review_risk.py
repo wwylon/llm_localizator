@@ -19,6 +19,11 @@ def test_risk_of_orders_the_signals() -> None:
     human, _ = risk_of(source="Discard", score=0.6, signals=["contradiction: …"], status="human",
                        has_draft=False)
     assert human < contra / 2
+    with_issue, issue_why = risk_of(
+        source="Delete", score=0.85, signals=[], status="machine", has_draft=False,
+        issues=[{"category": "accuracy", "severity": "major", "description": "wrong polarity"}],
+    )
+    assert with_issue >= 2.0 and "judge major/accuracy" in issue_why
 
 
 def test_review_risk_lists_and_exports(tmp_path, make_config) -> None:
@@ -33,5 +38,5 @@ def test_review_risk_lists_and_exports(tmp_path, make_config) -> None:
     result = op_review_risk(cfg, locale="pl")
     assert result.ok and result.data["rows"][0]["key"] == "a.discard"
     csv_out = op_review_risk(cfg, locale="pl", fmt="csv")
-    assert csv_out.lines[0].startswith("key,source,current,suggestion")
+    assert csv_out.lines[0].startswith("key,source,current,suggestion,risk,score,issues")
     assert op_review_risk(cfg, locale="de").exit_code == 2
